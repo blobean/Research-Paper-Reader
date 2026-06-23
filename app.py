@@ -13,6 +13,7 @@ import streamlit as st
 
 from utils import (
     VOCABULARY_COLUMNS,
+    build_reading_assistant,
     clean_filename,
     delete_paper,
     ensure_storage_files,
@@ -20,6 +21,7 @@ from utils import (
     export_summary_docx,
     export_summary_json,
     export_summary_txt,
+    extract_text_from_upload,
     generate_summary,
     load_saved_papers,
     load_vocabulary,
@@ -94,6 +96,13 @@ def default_paper() -> dict[str, Any]:
         "course_module": "",
         "topic": "",
         "date_reviewed": date.today().isoformat(),
+        "paper_text": "",
+        "auto_summary": "",
+        "auto_key_points": [],
+        "auto_keywords": [],
+        "auto_method_points": [],
+        "auto_result_points": [],
+        "auto_limitation_points": [],
         "abstract_text": "",
         "one_sentence_summary": "",
         "background_information": "",
@@ -164,6 +173,15 @@ def normalise_paper(paper: dict[str, Any]) -> dict[str, Any]:
         normalised["techniques_used"] = []
     if not isinstance(normalised.get("common_limitations"), list):
         normalised["common_limitations"] = []
+    for field in [
+        "auto_key_points",
+        "auto_keywords",
+        "auto_method_points",
+        "auto_result_points",
+        "auto_limitation_points",
+    ]:
+        if not isinstance(normalised.get(field), list):
+            normalised[field] = []
 
     return normalised
 
@@ -194,10 +212,12 @@ def save_current_paper(show_success: bool = True) -> bool:
         st.warning("Please enter a paper title before saving.")
         return False
 
-    if not paper.get("abstract_text", "").strip() and not paper.get(
-        "one_sentence_summary", ""
-    ).strip():
-        st.warning("Add an abstract or at least one note before saving.")
+    if (
+        not paper.get("paper_text", "").strip()
+        and not paper.get("abstract_text", "").strip()
+        and not paper.get("one_sentence_summary", "").strip()
+    ):
+        st.warning("Add paper text, an abstract, or at least one note before saving.")
         return False
 
     if not paper.get("paper_id"):
@@ -244,8 +264,132 @@ def paper_information_tab() -> None:
         save_current_paper()
 
 
+def paper_input_tab() -> None:
+    st.header("2. Paper Input and Content Points")
+    st.write(
+        "Paste the paper text or upload a TXT/PDF file. The app will extract readable points locally to help you start reading."
+    )
+    help_box(
+        "This is a local study helper, not an AI API. It looks for common paper sections, frequent keywords, "
+        "and sentences that seem useful for methods, results, and limitations. Always check the original paper."
+    )
+
+    paper = st.session_state.paper
+    uploaded_file = st.file_uploader("Upload research paper file", type=["txt", "pdf"])
+    if uploaded_file is not None:
+        extracted_text = extract_text_from_upload(uploaded_file)
+        if extracted_text.startswith("PDF reading requires") or extracted_text.startswith("Could not read"):
+            st.warning(extracted_text)
+        elif st.button("Use uploaded file text"):
+            update_paper("paper_text", extracted_text)
+            st.success("Uploaded text added to the paper input box.")
+            st.rerun()
+
+    update_paper(
+        "paper_text",
+        st.text_area(
+            "Paste paper text here",
+            value=paper.get("paper_text", ""),
+            height=320,
+            help="You can paste the abstract, selected sections, or the full text if you have access.",
+        ),
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        analyse_clicked = st.button("Extract content points", type="primary")
+    with col2:
+        clear_clicked = st.button("Clear extracted points")
+
+    if clear_clicked:
+        for field, empty_value in [
+            ("auto_summary", ""),
+            ("auto_key_points", []),
+            ("auto_keywords", []),
+            ("auto_method_points", []),
+            ("auto_result_points", []),
+            ("auto_limitation_points", []),
+        ]:
+            update_paper(field, empty_value)
+        st.session_state.final_summary = ""
+        st.success("Extracted points cleared.")
+        st.rerun()
+
+    if analyse_clicked:
+        if not paper.get("paper_text", "").strip():
+            st.warning("Paste paper text or upload a file before extracting points.")
+        else:
+            assistant = build_reading_assistant(paper["paper_text"])
+            sections = assistant["sections"]
+
+            update_paper("paper_text", assistant["cleaned_text"])
+            update_paper("auto_summary", assistant["short_summary"])
+            update_paper("auto_key_points", assistant["key_points"])
+            update_paper("auto_keywords", assistant["keywords"])
+            update_paper("auto_method_points", assistant["method_points"])
+            update_paper("auto_result_points", assistant["result_points"])
+            update_paper("auto_limitation_points", assistant["limitation_points"])
+
+            if sections.get("abstract") and not paper.get("abstract_text"):
+                update_paper("abstract_text", sections["abstract"])
+            if assistant["short_summary"] and not paper.get("one_sentence_summary"):
+                update_paper("one_sentence_summary", assistant["short_summary"])
+            if assistant["keywords"] and not paper.get("main_keywords"):
+                update_paper("main_keywords", ", ".join(assistant["keywords"]))
+            if assistant["method_points"] and not paper.get("method_notes"):
+                update_paper("method_notes", "\n".join(f"- {point}" for point in assistant["method_points"]))
+            if assistant["result_points"]:
+                for index, point in enumerate(assistant["result_points"][:5]):
+                    if not paper["results"][index]["description"]:
+                        update_result(index, "description", point)
+            if assistant["limitation_points"] and not paper.get("student_limitations"):
+                update_paper(
+                    "student_limitations",
+                    "\n".join(f"- {point}" for point in assistant["limitation_points"]),
+                )
+
+            st.success(f"Extracted points from about {assistant['word_count']} words.")
+            st.rerun()
+
+    if paper.get("auto_summary"):
+        st.subheader("Suggested short summary")
+        st.write(paper["auto_summary"])
+
+    if paper.get("auto_keywords"):
+        st.subheader("Suggested keywords")
+        st.write(", ".join(paper["auto_keywords"]))
+
+    if paper.get("auto_key_points"):
+        st.subheader("Main content points")
+        for point in paper["auto_key_points"]:
+            st.markdown(f"- {point}")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.subheader("Methods clues")
+        if paper.get("auto_method_points"):
+            for point in paper["auto_method_points"]:
+                st.markdown(f"- {point}")
+        else:
+            st.caption("No method clues extracted yet.")
+    with col2:
+        st.subheader("Results clues")
+        if paper.get("auto_result_points"):
+            for point in paper["auto_result_points"]:
+                st.markdown(f"- {point}")
+        else:
+            st.caption("No result clues extracted yet.")
+    with col3:
+        st.subheader("Limitation clues")
+        if paper.get("auto_limitation_points"):
+            for point in paper["auto_limitation_points"]:
+                st.markdown(f"- {point}")
+        else:
+            st.caption("No limitation clues extracted yet.")
+
+
 def abstract_notes_tab() -> None:
-    st.header("2. Abstract Notes")
+    st.header("3. Abstract Notes")
     st.write("Paste the abstract and write your first simple understanding of the paper.")
     help_box(
         "The abstract is a short summary of the whole paper. Do not try to understand every detail first. "
@@ -269,7 +413,7 @@ def abstract_notes_tab() -> None:
 
 
 def research_question_tab() -> None:
-    st.header("3. Research Question and Aim")
+    st.header("4. Research Question and Aim")
     st.write("Break the purpose of the study into smaller questions.")
     help_box(
         "The research question is what the researchers are trying to answer. "
@@ -285,7 +429,7 @@ def research_question_tab() -> None:
 
 
 def methods_tab() -> None:
-    st.header("4. Methods Breakdown")
+    st.header("5. Methods Breakdown")
     st.write("Focus on what the researchers used, measured, and compared.")
     help_box(
         "The methods section explains how the researchers performed the study. Focus on what sample they used, "
@@ -317,7 +461,7 @@ def methods_tab() -> None:
 
 
 def results_tab() -> None:
-    st.header("5. Results Breakdown")
+    st.header("6. Results Breakdown")
     st.write("Choose up to five important results and explain each one in simple words.")
     help_box(
         "Do not copy the whole results section. Pick the most important findings. Look for words such as increased, "
@@ -360,7 +504,7 @@ def results_tab() -> None:
 
 
 def discussion_tab() -> None:
-    st.header("6. Discussion and Conclusion")
+    st.header("7. Discussion and Conclusion")
     st.write("Explain what the results mean and what message the authors want the reader to take away.")
     help_box("The discussion section explains the meaning of the results. The conclusion gives the main message of the paper.")
 
@@ -378,7 +522,7 @@ def discussion_tab() -> None:
 
 
 def limitations_tab() -> None:
-    st.header("7. Limitations and Critical Thinking")
+    st.header("8. Limitations and Critical Thinking")
     st.write("Think about what the study can show clearly and what it cannot prove yet.")
     help_box("Critical thinking does not mean attacking the paper. It means understanding what the study can and cannot prove.")
 
@@ -391,7 +535,7 @@ def limitations_tab() -> None:
 
 
 def vocabulary_tab() -> None:
-    st.header("8. Vocabulary Builder")
+    st.header("9. Vocabulary Builder")
     st.write("Save difficult biomedical words in your own simple language.")
     help_box("A good vocabulary note is short and understandable. Try writing the explanation as if you were teaching a classmate.")
 
@@ -464,7 +608,7 @@ def vocabulary_tab() -> None:
 
 
 def final_summary_tab() -> None:
-    st.header("9. Final Summary and Export")
+    st.header("10. Final Summary and Export")
     st.write("Generate a structured revision summary from all sections.")
 
     if st.button("Generate Final Summary"):
@@ -518,7 +662,7 @@ def final_summary_tab() -> None:
 
 
 def saved_papers_tab() -> None:
-    st.header("10. Saved Papers")
+    st.header("11. Saved Papers")
     st.write("Load, review, or delete paper notes saved on this computer.")
 
     col1, col2 = st.columns(2)
@@ -590,6 +734,7 @@ def main() -> None:
     tabs = st.tabs(
         [
             "Paper Information",
+            "Paper Input",
             "Abstract Notes",
             "Research Question and Aim",
             "Methods Breakdown",
@@ -605,22 +750,24 @@ def main() -> None:
     with tabs[0]:
         paper_information_tab()
     with tabs[1]:
-        abstract_notes_tab()
+        paper_input_tab()
     with tabs[2]:
-        research_question_tab()
+        abstract_notes_tab()
     with tabs[3]:
-        methods_tab()
+        research_question_tab()
     with tabs[4]:
-        results_tab()
+        methods_tab()
     with tabs[5]:
-        discussion_tab()
+        results_tab()
     with tabs[6]:
-        limitations_tab()
+        discussion_tab()
     with tabs[7]:
-        vocabulary_tab()
+        limitations_tab()
     with tabs[8]:
-        final_summary_tab()
+        vocabulary_tab()
     with tabs[9]:
+        final_summary_tab()
+    with tabs[10]:
         saved_papers_tab()
 
     st.sidebar.title("Local files")

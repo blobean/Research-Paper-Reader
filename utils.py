@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -20,6 +21,72 @@ DATA_DIR = Path(".")
 SAVED_PAPERS_FILE = DATA_DIR / "saved_papers.json"
 VOCABULARY_FILE = DATA_DIR / "vocabulary.csv"
 EXPORTS_DIR = DATA_DIR / "exports"
+
+STOPWORDS = {
+    "about",
+    "after",
+    "also",
+    "among",
+    "and",
+    "are",
+    "because",
+    "been",
+    "between",
+    "both",
+    "but",
+    "can",
+    "could",
+    "did",
+    "does",
+    "during",
+    "each",
+    "for",
+    "from",
+    "had",
+    "has",
+    "have",
+    "how",
+    "however",
+    "into",
+    "may",
+    "more",
+    "most",
+    "not",
+    "our",
+    "patients",
+    "paper",
+    "research",
+    "result",
+    "results",
+    "show",
+    "showed",
+    "study",
+    "such",
+    "than",
+    "that",
+    "the",
+    "their",
+    "these",
+    "this",
+    "those",
+    "through",
+    "using",
+    "was",
+    "were",
+    "which",
+    "while",
+    "with",
+}
+
+SECTION_ALIASES = {
+    "abstract": ["abstract", "summary"],
+    "introduction": ["introduction", "background"],
+    "methods": ["methods", "materials and methods", "methodology", "experimental procedures"],
+    "results": ["results", "findings"],
+    "discussion": ["discussion"],
+    "conclusion": ["conclusion", "conclusions"],
+    "limitations": ["limitations", "strengths and limitations"],
+}
 
 VOCABULARY_COLUMNS = [
     "Term",
@@ -193,6 +260,180 @@ def serialise_value(value: Any) -> Any:
     return value
 
 
+def extract_text_from_upload(uploaded_file: Any) -> str:
+    """Read text from an uploaded TXT or PDF file.
+
+    PDF support uses pypdf. If pypdf is not installed, the app returns a clear
+    message instead of crashing.
+    """
+    if uploaded_file is None:
+        return ""
+
+    file_name = uploaded_file.name.lower()
+    data = uploaded_file.getvalue()
+    if file_name.endswith(".txt"):
+        return data.decode("utf-8", errors="ignore")
+
+    if file_name.endswith(".pdf"):
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            return "PDF reading requires pypdf. Install it with: pip install pypdf"
+
+        try:
+            import io
+
+            reader = PdfReader(io.BytesIO(data))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            return "\n\n".join(pages).strip()
+        except Exception as error:
+            return f"Could not read this PDF: {error}"
+
+    return data.decode("utf-8", errors="ignore")
+
+
+def clean_paper_text(text: str) -> str:
+    """Normalise whitespace from pasted or uploaded paper text."""
+    text = text.replace("\r", "\n")
+    text = re.sub(r"-\n", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    return text.strip()
+
+
+def split_sentences(text: str) -> list[str]:
+    """Split paper text into readable sentence-like chunks."""
+    cleaned = re.sub(r"\s+", " ", text.strip())
+    if not cleaned:
+        return []
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", cleaned)
+    return [sentence.strip() for sentence in sentences if len(sentence.strip()) > 25]
+
+
+def extract_sections(text: str) -> dict[str, str]:
+    """Extract common paper sections using simple local heading detection."""
+    cleaned = clean_paper_text(text)
+    sections = {key: "" for key in SECTION_ALIASES}
+    if not cleaned:
+        return sections
+
+    heading_pattern = re.compile(
+        r"(?im)^\s*(abstract|summary|introduction|background|methods|materials and methods|"
+        r"methodology|experimental procedures|results|findings|discussion|conclusion|"
+        r"conclusions|limitations|strengths and limitations)\s*$"
+    )
+    matches = list(heading_pattern.finditer(cleaned))
+
+    if not matches:
+        sentences = split_sentences(cleaned)
+        sections["abstract"] = " ".join(sentences[:8])
+        return sections
+
+    for index, match in enumerate(matches):
+        raw_heading = match.group(1).lower()
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
+        content = cleaned[start:end].strip()
+        for section, aliases in SECTION_ALIASES.items():
+            if raw_heading in aliases:
+                sections[section] = content
+                break
+    return sections
+
+
+def extract_keywords(text: str, limit: int = 12) -> list[str]:
+    """Find likely important biomedical keywords using local word frequency."""
+    words = re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", text.lower())
+    filtered = [
+        word.strip("-")
+        for word in words
+        if word not in STOPWORDS and not word.endswith("ing") and len(word) > 3
+    ]
+    counts = Counter(filtered)
+    return [word for word, _ in counts.most_common(limit)]
+
+
+def summarise_text(text: str, sentence_count: int = 4) -> str:
+    """Create a short extractive summary from the most informative sentences."""
+    sentences = split_sentences(text)
+    if not sentences:
+        return ""
+
+    keywords = set(extract_keywords(text, limit=20))
+    scored = []
+    for position, sentence in enumerate(sentences):
+        words = re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", sentence.lower())
+        keyword_hits = sum(1 for word in words if word in keywords)
+        result_hits = len(
+            re.findall(
+                r"\b(increased|decreased|significant|associated|correlated|reduced|higher|lower|improved)\b",
+                sentence.lower(),
+            )
+        )
+        score = keyword_hits + (2 * result_hits) - (position * 0.02)
+        scored.append((score, position, sentence))
+
+    best = sorted(scored, reverse=True)[:sentence_count]
+    ordered = sorted(best, key=lambda item: item[1])
+    return " ".join(sentence for _, _, sentence in ordered)
+
+
+def extract_key_points(text: str, limit: int = 8) -> list[str]:
+    """Return bullet-style reading points from the paper text."""
+    summary = summarise_text(text, sentence_count=limit)
+    return split_sentences(summary)[:limit]
+
+
+def find_sentences_with_terms(text: str, terms: list[str], limit: int = 5) -> list[str]:
+    """Find sentences that mention any of the provided terms."""
+    sentences = split_sentences(text)
+    found = []
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if any(term.lower() in lowered for term in terms):
+            found.append(sentence)
+        if len(found) >= limit:
+            break
+    return found
+
+
+def build_reading_assistant(paper_text: str) -> dict[str, Any]:
+    """Create local reading support from a pasted or uploaded paper.
+
+    This is intentionally simple and transparent. It extracts useful points; it
+    does not claim to replace careful reading or expert judgement.
+    """
+    cleaned = clean_paper_text(paper_text)
+    sections = extract_sections(cleaned)
+    source_for_summary = sections.get("abstract") or cleaned
+
+    method_terms = ["sample", "participants", "cells", "mice", "assay", "measured", "analysis"]
+    result_terms = [
+        "increased",
+        "decreased",
+        "significant",
+        "associated",
+        "correlated",
+        "higher",
+        "lower",
+        "reduced",
+        "improved",
+    ]
+    limitation_terms = ["limitation", "limited", "bias", "small sample", "future", "not assess"]
+
+    return {
+        "cleaned_text": cleaned,
+        "word_count": len(re.findall(r"\b\w+\b", cleaned)),
+        "sections": sections,
+        "keywords": extract_keywords(cleaned),
+        "short_summary": summarise_text(source_for_summary, sentence_count=3),
+        "key_points": extract_key_points(cleaned, limit=8),
+        "method_points": find_sentences_with_terms(sections.get("methods") or cleaned, method_terms, limit=5),
+        "result_points": find_sentences_with_terms(sections.get("results") or cleaned, result_terms, limit=5),
+        "limitation_points": find_sentences_with_terms(cleaned, limitation_terms, limit=5),
+    }
+
+
 def _line(label: str, value: Any) -> str:
     """Format one labeled summary line."""
     if isinstance(value, list):
@@ -265,6 +506,8 @@ def generate_summary(paper: dict[str, Any], vocabulary: Optional[pd.DataFrame] =
         ("Research Paper Reading Helper Summary", ""),
         ("Paper title", paper.get("paper_title", "Not entered")),
         ("Full citation-style information", citation or "Not entered"),
+        ("Extracted short summary", paper.get("auto_summary", "Not entered")),
+        ("Extracted content points", "\n".join(f"- {point}" for point in paper.get("auto_key_points", [])) or "Not entered"),
         ("One-sentence summary", paper.get("one_sentence_summary", "Not entered")),
         ("Background", paper.get("background_information", "Not entered")),
         ("Research question", paper.get("research_question", "Not entered")),
