@@ -671,6 +671,23 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
 
 def compare_papers(papers: list[dict[str, Any]]) -> dict[str, Any]:
     """Compare multiple papers using extracted local summaries and keywords."""
+    def meaningful_terms(text: str) -> set[str]:
+        return {
+            word
+            for word in re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", text.lower())
+            if word not in STOPWORDS and word not in QUESTION_WORDS
+        }
+
+    def theme_phrase_from_terms(terms: set[str]) -> str:
+        priority_terms = [
+            term
+            for term in sorted(terms)
+            if term in TERM_TO_SYNONYMS
+            or term in {"cells", "treatment", "apoptosis", "biomarker", "inflammation", "sample", "method", "result"}
+        ]
+        chosen = priority_terms[:3] or sorted(terms)[:3]
+        return " / ".join(chosen)
+
     prepared = []
     for paper in papers:
         title = paper.get("paper_title") or paper.get("uploaded_file_name") or "Untitled paper"
@@ -689,6 +706,19 @@ def compare_papers(papers: list[dict[str, Any]]) -> dict[str, Any]:
                 "title": title,
                 "summary": paper.get("auto_summary", ""),
                 "keywords": keywords,
+                "ideas": [
+                    sentence
+                    for sentence in split_sentences(
+                        " ".join(
+                            [
+                                paper.get("auto_summary", ""),
+                                " ".join(paper.get("auto_key_points", [])),
+                                " ".join(paper.get("auto_result_points", [])),
+                                " ".join(paper.get("auto_limitation_points", [])),
+                            ]
+                        )
+                    )
+                ][:8],
                 "methods": paper.get("auto_method_points", []),
                 "results": paper.get("auto_result_points", []),
                 "limitations": paper.get("auto_limitation_points", []),
@@ -708,6 +738,45 @@ def compare_papers(papers: list[dict[str, Any]]) -> dict[str, Any]:
             if other is not item:
                 other_keywords.update(other["keywords"])
         unique_keywords[item["title"]] = sorted(item["keywords"] - other_keywords)
+
+    common_ideas = []
+    for first_index, first in enumerate(prepared):
+        for second in prepared[first_index + 1 :]:
+            for first_idea in first["ideas"]:
+                first_terms = meaningful_terms(first_idea)
+                if not first_terms:
+                    continue
+                for second_idea in second["ideas"]:
+                    second_terms = meaningful_terms(second_idea)
+                    shared_terms = first_terms & second_terms
+                    if len(shared_terms) < 2:
+                        continue
+                    common_ideas.append(
+                        {
+                            "theme": theme_phrase_from_terms(shared_terms),
+                            "papers": f"{first['title']} / {second['title']}",
+                            "shared_terms": ", ".join(sorted(shared_terms)[:8]),
+                            "paper_a_idea": first_idea,
+                            "paper_b_idea": second_idea,
+                        }
+                    )
+                    break
+                if len(common_ideas) >= 8:
+                    break
+
+    seen_themes = set()
+    common_themes = []
+    for idea in common_ideas:
+        if idea["theme"] in seen_themes:
+            continue
+        seen_themes.add(idea["theme"])
+        common_themes.append(
+            {
+                "theme": idea["theme"],
+                "shared_terms": idea["shared_terms"],
+                "papers": idea["papers"],
+            }
+        )
 
     oppositions = []
     increase_terms = {"increase", "increased", "higher", "elevated", "upregulated"}
@@ -733,6 +802,8 @@ def compare_papers(papers: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "papers": prepared,
         "shared_keywords": shared_keywords,
+        "common_themes": common_themes,
+        "common_ideas": common_ideas,
         "unique_keywords": unique_keywords,
         "oppositions": oppositions,
     }

@@ -440,12 +440,13 @@ def comparison_tab() -> None:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Where they intersect")
-        if comparison["shared_keywords"]:
-            for keyword in comparison["shared_keywords"][:15]:
-                st.markdown(f"- {keyword}")
+        st.subheader("Common themes")
+        if comparison["common_themes"]:
+            for theme in comparison["common_themes"][:8]:
+                st.markdown(f"- **{theme['theme']}**")
+                st.caption(f"Shared idea terms: {theme['shared_terms']}")
         else:
-            st.caption("No shared keywords found yet. Summarise each paper first for better comparison.")
+            st.caption("No common themes found yet. Summarise each paper first for better comparison.")
 
     with col2:
         st.subheader("Unique themes")
@@ -456,6 +457,19 @@ def comparison_tab() -> None:
                         st.markdown(f"- {keyword}")
                 else:
                     st.caption("No unique keywords found.")
+
+    st.subheader("Common ideas with evidence")
+    if comparison["common_ideas"]:
+        for idea in comparison["common_ideas"][:6]:
+            with st.expander(f"{idea['theme']} ({idea['papers']})"):
+                st.markdown("**Shared terms**")
+                st.write(idea["shared_terms"])
+                st.markdown("**Paper A idea**")
+                st.write(idea["paper_a_idea"])
+                st.markdown("**Paper B idea**")
+                st.write(idea["paper_b_idea"])
+    else:
+        st.caption("No overlapping idea snippets found.")
 
     st.subheader("Possible opposing findings")
     if comparison["oppositions"]:

@@ -61,7 +61,7 @@ The **Recall** tab lets you ask natural-language questions about the paper. It c
 
 ## Comparison
 
-The **Comparison** tab works after at least two papers have been uploaded. It shows side-by-side summaries, shared keywords, unique themes for each paper, possible opposing increase/decrease findings, and extracted methods/results/limitations points for each selected paper.
+The **Comparison** tab works after at least two papers have been uploaded. It shows side-by-side summaries, common themes, common ideas with evidence from both papers, unique themes for each paper, possible opposing increase/decrease findings, and extracted methods/results/limitations points for each selected paper.
 
 ## Notes
 
