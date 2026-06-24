@@ -1,6 +1,6 @@
 # Research Paper Reading Helper
 
-Research Paper Reading Helper is a local Streamlit app for a Year 1 Biomedical Science student. It helps you input research paper text, extract useful content points, and turn the paper into beginner-friendly summaries covering the abstract, study purpose, methods, results, discussion, limitations, vocabulary, and final revision summary.
+Research Paper Reading Helper is a local Streamlit app for a Year 1 Biomedical Science student. It helps you upload or paste research paper text, extract beginner-friendly summary points, and list the sources used in the paper.
 
 The app does not use a database, login, cloud deployment, patient data, or an AI API. Everything is saved on your own computer.
 
@@ -10,15 +10,9 @@ The app does not use a database, login, cloud deployment, patient data, or an AI
 - Paste paper text or upload a TXT/PDF file.
 - Extract a short local summary, keywords, and reading points from the paper text.
 - Pull out clues for methods, results, and limitations to help guide reading.
-- Paste and summarise the abstract.
-- Summarise the study purpose, aim, expected finding, and importance.
-- Break down study methods, techniques, samples, controls, and ethics.
-- Write up to five key results in simple words.
-- Understand the discussion and conclusion.
-- Summarise limitations and future research improvements.
-- Build a local biomedical vocabulary list.
-- Generate and export a structured final summary.
-- Save, load, view, and delete previous paper reviews.
+- Extract sources from the References or Bibliography section when present.
+- Edit and download the extracted sources list.
+- Save, load, view, and delete previous paper summaries.
 
 ## Installation
 
@@ -50,23 +44,12 @@ http://localhost:8501
 The app creates these local files automatically:
 
 - `saved_papers.json` stores saved paper reviews.
-- `vocabulary.csv` stores vocabulary terms.
-- `exports/` stores exported summaries.
 
 Uploaded files are read locally in the app. The app does not send paper text to an AI API or cloud service.
 
-If `vocabulary.csv` does not exist, the app starts it with beginner biomedical terms such as apoptosis, homeostasis, osmosis, diffusion, enzyme, ATP, mitosis, biomarker, inflammation, and pathogen.
+## Sources
 
-## Exporting Summaries
-
-Go to the **Final Summary and Export** tab, click **Generate Final Summary**, then choose an export option:
-
-- `.txt`
-- `.csv`
-- `.json`
-- `.docx`
-
-Exported files are saved in the `exports/` folder. File names are cleaned so paper titles with spaces or special characters can still be used safely.
+The **Sources** tab lists references extracted from the uploaded or pasted paper. If the app cannot find a References or Bibliography section, you can still paste or edit the sources manually. The source list can be downloaded as a CSV file.
 
 ## Notes
 

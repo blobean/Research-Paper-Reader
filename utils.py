@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
-from docx import Document
+
+try:
+    from docx import Document
+except ImportError:
+    Document = None
 
 
 DATA_DIR = Path(".")
@@ -86,6 +90,7 @@ SECTION_ALIASES = {
     "discussion": ["discussion"],
     "conclusion": ["conclusion", "conclusions"],
     "limitations": ["limitations", "strengths and limitations"],
+    "references": ["references", "bibliography", "literature cited", "works cited"],
 }
 
 VOCABULARY_COLUMNS = [
@@ -320,7 +325,8 @@ def extract_sections(text: str) -> dict[str, str]:
     heading_pattern = re.compile(
         r"(?im)^\s*(abstract|summary|introduction|background|methods|materials and methods|"
         r"methodology|experimental procedures|results|findings|discussion|conclusion|"
-        r"conclusions|limitations|strengths and limitations)\s*$"
+        r"conclusions|limitations|strengths and limitations|references|bibliography|"
+        r"literature cited|works cited)\s*$"
     )
     matches = list(heading_pattern.finditer(cleaned))
 
@@ -339,6 +345,46 @@ def extract_sections(text: str) -> dict[str, str]:
                 sections[section] = content
                 break
     return sections
+
+
+def extract_sources(text: str) -> list[str]:
+    """Extract likely source/reference entries from a paper's reference list."""
+    sections = extract_sections(text)
+    references = sections.get("references", "")
+    if not references:
+        match = re.search(
+            r"(?is)\n\s*(references|bibliography|literature cited|works cited)\s*\n(.+)$",
+            clean_paper_text(text),
+        )
+        references = match.group(2).strip() if match else ""
+
+    if not references:
+        return []
+
+    lines = [line.strip() for line in references.splitlines() if line.strip()]
+    sources = []
+    current = ""
+    new_entry = re.compile(r"^(\[\d+\]|\d+[\.)]\s+|[A-Z][A-Za-z'-]+,\s+[A-Z])")
+
+    for line in lines:
+        lowered = line.lower()
+        if lowered in {"appendix", "appendices", "supplementary material"}:
+            break
+        if new_entry.match(line) and current:
+            sources.append(current.strip())
+            current = line
+        else:
+            current = f"{current} {line}".strip()
+
+    if current:
+        sources.append(current.strip())
+
+    cleaned_sources = []
+    for source in sources:
+        source = re.sub(r"\s+", " ", source).strip()
+        if len(source) > 20 and source.lower() not in {"references", "bibliography"}:
+            cleaned_sources.append(source)
+    return cleaned_sources
 
 
 def extract_keywords(text: str, limit: int = 12) -> list[str]:
@@ -425,6 +471,7 @@ def build_reading_assistant(paper_text: str) -> dict[str, Any]:
         "cleaned_text": cleaned,
         "word_count": len(re.findall(r"\b\w+\b", cleaned)),
         "sections": sections,
+        "sources": extract_sources(cleaned),
         "keywords": extract_keywords(cleaned),
         "short_summary": summarise_text(source_for_summary, sentence_count=3),
         "key_points": extract_key_points(cleaned, limit=8),
@@ -576,6 +623,8 @@ def export_summary_csv(paper: dict[str, Any], summary: str) -> Path:
 
 def export_summary_docx(summary: str, paper: dict[str, Any]) -> Path:
     """Export a summary as a Word document."""
+    if Document is None:
+        raise ImportError("python-docx is required for DOCX export.")
     path = _export_path(paper, "docx")
     document = Document()
     document.add_heading("Research Paper Reading Helper Summary", level=1)
