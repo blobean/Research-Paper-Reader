@@ -1,18 +1,19 @@
 # Research Paper Reading Helper
 
-Research Paper Reading Helper is a local Streamlit app for a Year 1 Biomedical Science student. It helps you upload or paste research paper text, extract beginner-friendly summary points, and list the sources used in the paper.
+Research Paper Reading Helper is a local Streamlit app for a Year 1 Biomedical Science student. It helps you upload or paste one or more research papers, extract beginner-friendly summary points, list sources, ask recall questions, and compare papers.
 
 The app does not use a database, login, cloud deployment, patient data, or an AI API. Everything is saved on your own computer.
 
 ## Summary Features
 
 - Record paper information such as title, authors, journal, DOI, topic, and review date.
-- Paste paper text or upload a TXT/PDF file.
+- Paste paper text or upload multiple TXT/PDF files.
 - Extract a short local summary, keywords, and reading points from the paper text.
 - Pull out clues for methods, results, and limitations to help guide reading.
 - Extract sources from the References or Bibliography section when present.
 - Edit and download the extracted sources list.
 - Ask questions about the paper in the Recall tab and receive local answers with supporting snippets.
+- Compare multiple uploaded papers side by side, including shared themes, unique themes, and possible opposing findings.
 - Save, load, view, and delete previous paper summaries.
 
 ## Installation
@@ -55,6 +56,10 @@ The **Sources** tab lists references extracted from the uploaded or pasted paper
 ## Recall
 
 The **Recall** tab lets you ask natural-language questions about the paper. It checks the paper text, summary points, methods points, results points, limitations points, and sources, then returns a short answer, detailed bullet points, and expandable supporting evidence. Recall also uses simple synonym matching, so terms such as "sample", "participants", "cells", and "cohort" can support the same search. It does not use an AI API.
+
+## Comparison
+
+The **Comparison** tab works after at least two papers have been uploaded. It shows side-by-side summaries, shared keywords, unique themes for each paper, possible opposing increase/decrease findings, and extracted methods/results/limitations points for each selected paper.
 
 ## Notes
 

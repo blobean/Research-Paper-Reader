@@ -13,6 +13,7 @@ import streamlit as st
 
 from utils import (
     build_reading_assistant,
+    compare_papers,
     delete_paper,
     ensure_storage_files,
     extract_text_from_upload,
@@ -28,6 +29,7 @@ def default_paper() -> dict[str, Any]:
     """Return a blank paper record for the summariser."""
     return {
         "paper_id": "",
+        "uploaded_file_id": "",
         "uploaded_file_name": "",
         "paper_title": "",
         "date_reviewed": date.today().isoformat(),
@@ -64,11 +66,35 @@ def initialise_session() -> None:
     ensure_storage_files()
     if "paper" not in st.session_state:
         st.session_state.paper = default_paper()
+    if "papers" not in st.session_state:
+        st.session_state.papers = []
+    if "active_paper_index" not in st.session_state:
+        st.session_state.active_paper_index = 0
+
+
+def sync_active_paper() -> None:
+    """Keep the selected paper and paper list in sync."""
+    if st.session_state.papers:
+        index = min(st.session_state.active_paper_index, len(st.session_state.papers) - 1)
+        st.session_state.active_paper_index = index
+        st.session_state.paper = st.session_state.papers[index]
+
+
+def replace_active_paper(paper: dict[str, Any]) -> None:
+    """Replace the current paper without losing other uploaded documents."""
+    if st.session_state.papers:
+        st.session_state.papers[st.session_state.active_paper_index] = paper
+    else:
+        st.session_state.papers.append(paper)
+        st.session_state.active_paper_index = 0
+    st.session_state.paper = paper
 
 
 def update_paper(field: str, value: Any) -> None:
     """Update one field in the current paper record."""
     st.session_state.paper[field] = serialise_value(value)
+    if st.session_state.papers:
+        st.session_state.papers[st.session_state.active_paper_index] = st.session_state.paper
 
 
 def save_current_paper(show_success: bool = True) -> bool:
@@ -119,24 +145,51 @@ def paper_input_tab() -> None:
     st.header("Paper Input")
     st.write("Upload a research paper or paste its text. The app summarises the content locally on this computer.")
 
+    sync_active_paper()
     paper = st.session_state.paper
-    uploaded_file = st.file_uploader("Upload research paper file", type=["txt", "pdf"])
-    if uploaded_file is not None:
-        extracted_text = extract_text_from_upload(uploaded_file)
-        if extracted_text.startswith("PDF reading requires") or extracted_text.startswith("Could not read"):
-            st.warning(extracted_text)
-        else:
-            if paper.get("uploaded_file_name") != uploaded_file.name:
-                fresh_paper = default_paper()
-                fresh_paper["uploaded_file_name"] = uploaded_file.name
-                fresh_paper["paper_title"] = uploaded_file.name.rsplit(".", 1)[0]
-                fresh_paper["paper_text"] = extracted_text
-                st.session_state.paper = fresh_paper
-                st.success("New uploaded paper loaded. Previous paper details were cleared.")
-                st.rerun()
-            elif paper.get("paper_text") != extracted_text:
-                update_paper("paper_text", extracted_text)
-                st.success("Uploaded paper text refreshed.")
+    uploaded_files = st.file_uploader("Upload research paper files", type=["txt", "pdf"], accept_multiple_files=True)
+    if uploaded_files:
+        added_count = 0
+        existing_file_ids = {item.get("uploaded_file_id") for item in st.session_state.papers}
+        for uploaded_file in uploaded_files:
+            uploaded_file_id = f"{uploaded_file.name}:{uploaded_file.size}"
+            extracted_text = extract_text_from_upload(uploaded_file)
+            if extracted_text.startswith("PDF reading requires") or extracted_text.startswith("Could not read"):
+                st.warning(f"{uploaded_file.name}: {extracted_text}")
+                continue
+            if uploaded_file_id in existing_file_ids:
+                continue
+            new_paper = default_paper()
+            new_paper["uploaded_file_id"] = uploaded_file_id
+            new_paper["uploaded_file_name"] = uploaded_file.name
+            new_paper["paper_title"] = uploaded_file.name.rsplit(".", 1)[0]
+            new_paper["paper_text"] = extracted_text
+            st.session_state.papers.append(new_paper)
+            st.session_state.active_paper_index = len(st.session_state.papers) - 1
+            st.session_state.paper = new_paper
+            existing_file_ids.add(uploaded_file_id)
+            added_count += 1
+        if added_count:
+            st.success(f"Loaded {added_count} new paper{'s' if added_count != 1 else ''}.")
+            st.rerun()
+
+    if st.session_state.papers:
+        labels = [
+            paper_item.get("paper_title") or paper_item.get("uploaded_file_name") or f"Paper {index + 1}"
+            for index, paper_item in enumerate(st.session_state.papers)
+        ]
+        selected_label = st.selectbox(
+            "Active paper",
+            labels,
+            index=min(st.session_state.active_paper_index, len(labels) - 1),
+        )
+        selected_index = labels.index(selected_label)
+        if selected_index != st.session_state.active_paper_index:
+            st.session_state.active_paper_index = selected_index
+            sync_active_paper()
+            st.rerun()
+
+    paper = st.session_state.paper
 
     update_paper(
         "paper_title",
@@ -160,17 +213,28 @@ def paper_input_tab() -> None:
         ),
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         if st.button("Summarise paper", type="primary"):
             run_extraction()
             st.rerun()
     with col2:
+        if st.button("Summarise all"):
+            for index, paper_item in enumerate(st.session_state.papers):
+                st.session_state.active_paper_index = index
+                st.session_state.paper = paper_item
+                run_extraction()
+            sync_active_paper()
+            st.rerun()
+    with col3:
         if st.button("Save summary"):
             save_current_paper()
-    with col3:
+    with col4:
         if st.button("Start new paper"):
-            st.session_state.paper = default_paper()
+            new_paper = default_paper()
+            st.session_state.papers.append(new_paper)
+            st.session_state.active_paper_index = len(st.session_state.papers) - 1
+            st.session_state.paper = new_paper
             st.rerun()
 
     if paper.get("auto_summary"):
@@ -260,16 +324,20 @@ def recall_tab() -> None:
         return
 
     st.subheader("Answer")
-    st.write(result["answer"])
+    st.caption(result["answer"])
     if result.get("main_point"):
+        st.markdown("**Short answer**")
         st.info(result["main_point"])
 
-    for group_name, points in result.get("answer_groups", {}).items():
-        if group_name == "Main answer":
-            continue
-        st.markdown(f"**{group_name}**")
-        for point in points:
-            st.markdown(f"- {point}")
+    with st.expander("Detailed answer", expanded=True):
+        key_details = result.get("key_details", [])
+        if key_details:
+            st.markdown("**Key details**")
+            for point in key_details:
+                st.markdown(f"- {point}")
+        else:
+            st.caption("No extra details were found beyond the short answer.")
+
     st.caption(f"Confidence: {result['confidence']}")
 
     with st.expander("Supporting evidence"):
@@ -278,6 +346,81 @@ def recall_tab() -> None:
             st.markdown(f"**{index}. {match['section']}**")
             st.caption(f"Matched terms: {match['matched_terms']}")
             st.write(match["snippet"])
+
+
+def comparison_tab() -> None:
+    st.header("Comparison")
+    st.write("Compare uploaded papers side by side, including shared themes, unique points, and possible opposing findings.")
+
+    if len(st.session_state.papers) < 2:
+        st.info("Upload at least two papers in the Paper Input tab to use comparison.")
+        return
+
+    labels = [
+        paper.get("paper_title") or paper.get("uploaded_file_name") or f"Paper {index + 1}"
+        for index, paper in enumerate(st.session_state.papers)
+    ]
+    selected_labels = st.multiselect("Papers to compare", labels, default=labels[:2])
+    selected_papers = [
+        st.session_state.papers[labels.index(label)]
+        for label in selected_labels
+    ]
+    if len(selected_papers) < 2:
+        st.warning("Select at least two papers.")
+        return
+
+    comparison = compare_papers(selected_papers)
+
+    st.subheader("Side-by-side details")
+    detail_rows = []
+    for paper in selected_papers:
+        detail_rows.append(
+            {
+                "Paper": paper.get("paper_title", "Untitled paper"),
+                "Short summary": paper.get("auto_summary", "Not summarised yet"),
+                "Keywords": ", ".join(paper.get("auto_keywords", [])[:10]),
+                "Sources": len(paper.get("sources", [])),
+            }
+        )
+    st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Where they intersect")
+        if comparison["shared_keywords"]:
+            for keyword in comparison["shared_keywords"][:15]:
+                st.markdown(f"- {keyword}")
+        else:
+            st.caption("No shared keywords found yet. Summarise each paper first for better comparison.")
+
+    with col2:
+        st.subheader("Unique themes")
+        for title, keywords in comparison["unique_keywords"].items():
+            with st.expander(title):
+                if keywords:
+                    for keyword in keywords[:12]:
+                        st.markdown(f"- {keyword}")
+                else:
+                    st.caption("No unique keywords found.")
+
+    st.subheader("Possible opposing findings")
+    if comparison["oppositions"]:
+        st.dataframe(pd.DataFrame(comparison["oppositions"]), use_container_width=True, hide_index=True)
+    else:
+        st.caption("No obvious opposing increase/decrease result language found.")
+
+    st.subheader("Extracted points by paper")
+    for paper in selected_papers:
+        with st.expander(paper.get("paper_title", "Untitled paper")):
+            st.markdown("**Methods points**")
+            for point in paper.get("auto_method_points", []) or ["No methods points extracted."]:
+                st.markdown(f"- {point}")
+            st.markdown("**Results points**")
+            for point in paper.get("auto_result_points", []) or ["No results points extracted."]:
+                st.markdown(f"- {point}")
+            st.markdown("**Limitations points**")
+            for point in paper.get("auto_limitation_points", []) or ["No limitations points extracted."]:
+                st.markdown(f"- {point}")
 
 
 def saved_papers_tab() -> None:
@@ -315,7 +458,10 @@ def saved_papers_tab() -> None:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Load saved paper"):
-            st.session_state.paper = normalise_paper(selected_paper)
+            loaded_paper = normalise_paper(selected_paper)
+            st.session_state.papers.append(loaded_paper)
+            st.session_state.active_paper_index = len(st.session_state.papers) - 1
+            st.session_state.paper = loaded_paper
             st.rerun()
     with col2:
         if st.button("Delete saved paper"):
@@ -334,7 +480,7 @@ def main() -> None:
     st.title("Research Paper Reading Helper")
     st.write("Upload or paste a research paper, then generate local summary points and extract its sources.")
 
-    tabs = st.tabs(["Paper Input", "Sources", "Recall", "Saved Papers"])
+    tabs = st.tabs(["Paper Input", "Sources", "Recall", "Comparison", "Saved Papers"])
     with tabs[0]:
         paper_input_tab()
     with tabs[1]:
@@ -342,6 +488,8 @@ def main() -> None:
     with tabs[2]:
         recall_tab()
     with tabs[3]:
+        comparison_tab()
+    with tabs[4]:
         saved_papers_tab()
 
     st.sidebar.title("Local files")

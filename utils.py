@@ -124,6 +124,30 @@ QUESTION_WORDS = {
     "why",
 }
 
+SYNONYM_GROUPS = {
+    "aim": ["aim", "objective", "purpose", "goal"],
+    "sample": ["sample", "participants", "subjects", "cells", "mice", "rats", "cohort", "population"],
+    "method": ["method", "methods", "technique", "techniques", "procedure", "protocol", "assay", "experiment"],
+    "measure": ["measure", "measured", "measurement", "assessed", "evaluated", "tested", "detected"],
+    "result": ["result", "results", "finding", "findings", "outcome", "effect", "change"],
+    "increase": ["increase", "increased", "higher", "elevated", "upregulated", "rise", "raised"],
+    "decrease": ["decrease", "decreased", "lower", "reduced", "downregulated", "decline"],
+    "significant": ["significant", "statistically", "p-value", "p<", "difference"],
+    "association": ["association", "associated", "correlation", "correlated", "linked", "relationship"],
+    "limitation": ["limitation", "limitations", "weakness", "bias", "constraint", "small sample", "limited"],
+    "conclusion": ["conclusion", "concluded", "suggests", "indicates", "implies", "shows"],
+    "source": ["source", "sources", "reference", "references", "citation", "bibliography"],
+    "apoptosis": ["apoptosis", "programmed cell death", "cell death"],
+    "inflammation": ["inflammation", "inflammatory", "immune response"],
+    "biomarker": ["biomarker", "marker", "indicator"],
+}
+
+TERM_TO_SYNONYMS = {}
+for synonym_group in SYNONYM_GROUPS.values():
+    expanded_group = sorted(set(synonym_group))
+    for synonym in expanded_group:
+        TERM_TO_SYNONYMS[synonym] = expanded_group
+
 SECTION_ALIASES = {
     "abstract": ["abstract", "summary"],
     "introduction": ["introduction", "background"],
@@ -541,11 +565,19 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
         for word in re.findall(r"\b[A-Za-z][A-Za-z-]{2,}\b", question)
         if word.lower() not in QUESTION_WORDS and word.lower() not in STOPWORDS
     ]
+    expanded_terms = sorted(
+        {
+            related_term
+            for term in query_terms
+            for related_term in TERM_TO_SYNONYMS.get(term, [term])
+        }
+    )
     if not query_terms:
         return {
             "answer": "Enter a more specific question or keyword phrase.",
             "main_point": "",
             "answer_groups": {},
+            "key_details": [],
             "confidence": "Low",
             "matches": [],
         }
@@ -570,12 +602,13 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
             chunks = [line.strip() for line in text.splitlines() if line.strip()]
         for chunk in chunks:
             lowered = chunk.lower()
-            matched_terms = [term for term in query_terms if term in lowered]
+            matched_terms = [term for term in expanded_terms if term in lowered]
             if not matched_terms:
                 continue
             phrase_bonus = 2 if " ".join(query_terms) in lowered else 0
             section_bonus = 1 if section != "Paper text" else 0
-            score = len(set(matched_terms)) + phrase_bonus + section_bonus
+            exact_bonus = sum(1 for term in query_terms if term in lowered)
+            score = len(set(matched_terms)) + exact_bonus + phrase_bonus + section_bonus
             key = (section, chunk)
             if key in seen:
                 continue
@@ -594,6 +627,7 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
             "answer": "I could not find an answer in the uploaded paper text.",
             "main_point": "",
             "answer_groups": {},
+            "key_details": [],
             "confidence": "Low",
             "matches": [],
         }
@@ -616,12 +650,13 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
     if main_point:
         answer_groups["Main answer"] = [main_point]
     if len(concise_points) > 1:
-        answer_groups["Helpful context"] = concise_points[1:4]
+        answer_groups["Key details"] = concise_points[1:4]
 
     return {
         "answer": f"Based on the uploaded paper, here is the clearest answer about {terms_text}.",
         "main_point": main_point,
         "answer_groups": answer_groups,
+        "key_details": answer_groups.get("Key details", []),
         "confidence": confidence,
         "matches": [
             {
@@ -631,6 +666,75 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
             }
             for match in ranked
         ],
+    }
+
+
+def compare_papers(papers: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compare multiple papers using extracted local summaries and keywords."""
+    prepared = []
+    for paper in papers:
+        title = paper.get("paper_title") or paper.get("uploaded_file_name") or "Untitled paper"
+        keywords = set(paper.get("auto_keywords", []))
+        text_for_keywords = " ".join(
+            [
+                paper.get("auto_summary", ""),
+                " ".join(paper.get("auto_key_points", [])),
+                " ".join(paper.get("auto_result_points", [])),
+            ]
+        )
+        if not keywords and text_for_keywords.strip():
+            keywords = set(extract_keywords(text_for_keywords, limit=12))
+        prepared.append(
+            {
+                "title": title,
+                "summary": paper.get("auto_summary", ""),
+                "keywords": keywords,
+                "methods": paper.get("auto_method_points", []),
+                "results": paper.get("auto_result_points", []),
+                "limitations": paper.get("auto_limitation_points", []),
+            }
+        )
+
+    if not prepared:
+        return {"papers": [], "shared_keywords": [], "unique_keywords": {}, "oppositions": []}
+
+    keyword_sets = [item["keywords"] for item in prepared if item["keywords"]]
+    shared_keywords = sorted(set.intersection(*keyword_sets)) if keyword_sets else []
+    all_keywords = set.union(*keyword_sets) if keyword_sets else set()
+    unique_keywords = {}
+    for item in prepared:
+        other_keywords = set()
+        for other in prepared:
+            if other is not item:
+                other_keywords.update(other["keywords"])
+        unique_keywords[item["title"]] = sorted(item["keywords"] - other_keywords)
+
+    oppositions = []
+    increase_terms = {"increase", "increased", "higher", "elevated", "upregulated"}
+    decrease_terms = {"decrease", "decreased", "lower", "reduced", "downregulated"}
+    for first_index, first in enumerate(prepared):
+        first_results = " ".join(first["results"]).lower()
+        for second in prepared[first_index + 1 :]:
+            second_results = " ".join(second["results"]).lower()
+            first_up = any(term in first_results for term in increase_terms)
+            first_down = any(term in first_results for term in decrease_terms)
+            second_up = any(term in second_results for term in increase_terms)
+            second_down = any(term in second_results for term in decrease_terms)
+            shared = sorted((first["keywords"] & second["keywords"]) or (set(shared_keywords) & all_keywords))
+            if shared and ((first_up and second_down) or (first_down and second_up)):
+                oppositions.append(
+                    {
+                        "papers": f"{first['title']} / {second['title']}",
+                        "shared_terms": ", ".join(shared[:6]),
+                        "note": "One paper contains increase-like result language while the other contains decrease-like result language.",
+                    }
+                )
+
+    return {
+        "papers": prepared,
+        "shared_keywords": shared_keywords,
+        "unique_keywords": unique_keywords,
+        "oppositions": oppositions,
     }
 
 
