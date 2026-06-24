@@ -253,14 +253,22 @@ def recall_tab() -> None:
 
     st.subheader("Answer")
     st.write(result["answer"])
-    for point in result.get("answer_points", []):
-        st.markdown(f"- {point}")
+    if result.get("main_point"):
+        st.info(result["main_point"])
+
+    for group_name, points in result.get("answer_groups", {}).items():
+        if group_name == "Main answer":
+            continue
+        st.markdown(f"**{group_name}**")
+        for point in points:
+            st.markdown(f"- {point}")
     st.caption(f"Confidence: {result['confidence']}")
 
-    st.subheader("Supporting snippets")
-    st.dataframe(pd.DataFrame(result["matches"]), use_container_width=True, hide_index=True)
-    for index, match in enumerate(result["matches"], start=1):
-        with st.expander(f"{index}. {match['section']} - {match['matched_terms']}"):
+    with st.expander("Supporting evidence"):
+        st.dataframe(pd.DataFrame(result["matches"]), use_container_width=True, hide_index=True)
+        for index, match in enumerate(result["matches"], start=1):
+            st.markdown(f"**{index}. {match['section']}**")
+            st.caption(f"Matched terms: {match['matched_terms']}")
             st.write(match["snippet"])
 
 
