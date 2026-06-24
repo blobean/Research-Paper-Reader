@@ -5,6 +5,7 @@ A local Streamlit summariser for beginner biomedical research paper reading.
 
 from __future__ import annotations
 
+import html
 from datetime import date
 from typing import Any
 
@@ -113,6 +114,52 @@ def update_paper(field: str, value: Any) -> None:
     st.session_state.paper[field] = serialise_value(value)
     if st.session_state.papers:
         st.session_state.papers[st.session_state.active_paper_index] = st.session_state.paper
+
+
+def render_wrapped_table(rows: list[dict[str, Any]]) -> None:
+    """Render a full-width wrapping table for long text."""
+    if not rows:
+        return
+
+    columns = list(rows[0].keys())
+    header_html = "".join(f"<th>{html.escape(str(column))}</th>" for column in columns)
+    body_html = ""
+    for row in rows:
+        body_html += "<tr>"
+        for column in columns:
+            value = html.escape(str(row.get(column, ""))).replace("\n", "<br>")
+            body_html += f"<td>{value}</td>"
+        body_html += "</tr>"
+
+    st.markdown(
+        f"""
+        <style>
+        .wrapped-table {{
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }}
+        .wrapped-table th {{
+            background: #f6f6f6;
+            font-weight: 700;
+        }}
+        .wrapped-table th,
+        .wrapped-table td {{
+            border: 1px solid #dddddd;
+            padding: 0.65rem;
+            vertical-align: top;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }}
+        </style>
+        <table class="wrapped-table">
+            <thead><tr>{header_html}</tr></thead>
+            <tbody>{body_html}</tbody>
+        </table>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def save_current_paper(show_success: bool = True) -> bool:
@@ -395,7 +442,7 @@ def recall_tab() -> None:
     st.caption(f"Confidence: {result['confidence']}")
 
     with st.expander("Supporting evidence"):
-        st.dataframe(pd.DataFrame(result["matches"]), use_container_width=True, hide_index=True)
+        render_wrapped_table(result["matches"])
         for index, match in enumerate(result["matches"], start=1):
             st.markdown(f"**{index}. {match['section']}**")
             st.caption(f"Matched terms: {match['matched_terms']}")
@@ -436,7 +483,7 @@ def comparison_tab() -> None:
                 "Sources": len(paper.get("sources", [])),
             }
         )
-    st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
+    render_wrapped_table(detail_rows)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -473,7 +520,7 @@ def comparison_tab() -> None:
 
     st.subheader("Possible opposing findings")
     if comparison["oppositions"]:
-        st.dataframe(pd.DataFrame(comparison["oppositions"]), use_container_width=True, hide_index=True)
+        render_wrapped_table(comparison["oppositions"])
     else:
         st.caption("No obvious opposing increase/decrease result language found.")
 
@@ -514,7 +561,7 @@ def saved_papers_tab() -> None:
             for paper in papers
         ]
     )
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    render_wrapped_table(table.to_dict("records"))
 
     labels = [
         f"{paper.get('paper_title', 'Untitled paper')} ({paper.get('date_reviewed', 'No date')})"
