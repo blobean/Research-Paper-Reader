@@ -190,7 +190,6 @@ def render_summary_section() -> None:
     if not papers_with_content:
         return
 
-    st.header("Summary")
     if len(papers_with_content) == 1:
         render_paper_summary(papers_with_content[0])
         return
@@ -237,46 +236,6 @@ def paper_input_tab() -> None:
             st.success(f"Loaded {added_count} new paper{'s' if added_count != 1 else ''}.")
             st.rerun()
 
-    if st.session_state.papers:
-        labels = [
-            paper_item.get("paper_title") or paper_item.get("uploaded_file_name") or f"Paper {index + 1}"
-            for index, paper_item in enumerate(st.session_state.papers)
-        ]
-        selected_label = st.selectbox(
-            "Active paper",
-            labels,
-            index=min(st.session_state.active_paper_index, len(labels) - 1),
-        )
-        selected_index = labels.index(selected_label)
-        if selected_index != st.session_state.active_paper_index:
-            st.session_state.active_paper_index = selected_index
-            sync_active_paper()
-            st.rerun()
-
-    paper = st.session_state.paper
-
-    update_paper(
-        "paper_title",
-        st.text_input("Paper title", value=paper.get("paper_title", "")),
-    )
-    reviewed = st.date_input(
-        "Date reviewed",
-        value=date.fromisoformat(paper["date_reviewed"])
-        if paper.get("date_reviewed") and len(paper["date_reviewed"]) == 10
-        else date.today(),
-    )
-    update_paper("date_reviewed", reviewed)
-
-    update_paper(
-        "paper_text",
-        st.text_area(
-            "Paper text",
-            value=paper.get("paper_text", ""),
-            height=360,
-            help="Paste the full text, abstract, or selected sections of the paper.",
-        ),
-    )
-
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         if st.button("Summarise paper", type="primary"):
@@ -301,6 +260,49 @@ def paper_input_tab() -> None:
             st.session_state.paper = new_paper
             st.rerun()
 
+    papers_to_show = st.session_state.papers or [st.session_state.paper]
+    tab_labels = [
+        paper_item.get("paper_title") or paper_item.get("uploaded_file_name") or f"Paper {index + 1}"
+        for index, paper_item in enumerate(papers_to_show)
+    ]
+    previous_active_index = min(st.session_state.active_paper_index, len(papers_to_show) - 1)
+    paper_tabs = st.tabs(tab_labels)
+    for index, (tab, paper_item) in enumerate(zip(paper_tabs, papers_to_show)):
+        with tab:
+            st.session_state.active_paper_index = index
+            st.session_state.paper = paper_item
+            update_paper(
+                "paper_title",
+                st.text_input("Paper title", value=paper_item.get("paper_title", ""), key=f"title_{index}"),
+            )
+            reviewed = st.date_input(
+                "Date reviewed",
+                value=date.fromisoformat(paper_item["date_reviewed"])
+                if paper_item.get("date_reviewed") and len(paper_item["date_reviewed"]) == 10
+                else date.today(),
+                key=f"date_{index}",
+            )
+            update_paper("date_reviewed", reviewed)
+
+            update_paper(
+                "paper_text",
+                st.text_area(
+                    "Paper text",
+                    value=paper_item.get("paper_text", ""),
+                    height=360,
+                    help="Paste the full text, abstract, or selected sections of the paper.",
+                    key=f"text_{index}",
+                ),
+            )
+    st.session_state.active_paper_index = previous_active_index
+    sync_active_paper()
+
+
+def summary_tab() -> None:
+    st.header("Summary")
+    if not st.session_state.papers and not st.session_state.paper.get("paper_text"):
+        st.info("Upload or paste a paper in the Paper Input tab first.")
+        return
     render_summary_section()
 
 
@@ -510,16 +512,18 @@ def main() -> None:
     st.title("Research Paper Reading Helper")
     st.write("Upload or paste a research paper, then generate local summary points and extract its sources.")
 
-    tabs = st.tabs(["Paper Input", "Sources", "Recall", "Comparison", "Saved Papers"])
+    tabs = st.tabs(["Paper Input", "Summary", "Sources", "Recall", "Comparison", "Saved Papers"])
     with tabs[0]:
         paper_input_tab()
     with tabs[1]:
-        sources_tab()
+        summary_tab()
     with tabs[2]:
-        recall_tab()
+        sources_tab()
     with tabs[3]:
-        comparison_tab()
+        recall_tab()
     with tabs[4]:
+        comparison_tab()
+    with tabs[5]:
         saved_papers_tab()
 
     st.sidebar.title("Local files")
