@@ -18,6 +18,7 @@ from utils import (
     extract_text_from_upload,
     load_saved_papers,
     make_paper_id,
+    recall_keyword_matches,
     save_paper,
     serialise_value,
 )
@@ -227,6 +228,38 @@ def sources_tab() -> None:
         )
 
 
+def recall_tab() -> None:
+    st.header("Recall")
+    st.write("Search the uploaded paper, extracted summary points, and sources using keywords.")
+
+    paper = st.session_state.paper
+    query = st.text_input(
+        "Keyword search",
+        placeholder="Example: apoptosis, ELISA, sample size, limitation",
+    )
+
+    if not paper.get("paper_text", "").strip() and not paper.get("auto_summary", "").strip():
+        st.info("Upload or paste a paper in the Paper Input tab before using recall.")
+        return
+
+    if not query.strip():
+        st.caption("Enter one or more keywords to find matching information.")
+        return
+
+    matches = recall_keyword_matches(paper, query)
+    if not matches:
+        st.warning("No matching information found for those keywords.")
+        return
+
+    st.success(f"Found {len(matches)} matching item{'s' if len(matches) != 1 else ''}.")
+    st.dataframe(pd.DataFrame(matches), use_container_width=True, hide_index=True)
+
+    st.subheader("Matched snippets")
+    for index, match in enumerate(matches, start=1):
+        with st.expander(f"{index}. {match['section']} - {match['matched_terms']}"):
+            st.write(match["snippet"])
+
+
 def saved_papers_tab() -> None:
     st.header("Saved Papers")
     st.write("Load, view, or delete locally saved paper summaries.")
@@ -281,12 +314,14 @@ def main() -> None:
     st.title("Research Paper Reading Helper")
     st.write("Upload or paste a research paper, then generate local summary points and extract its sources.")
 
-    tabs = st.tabs(["Paper Input", "Sources", "Saved Papers"])
+    tabs = st.tabs(["Paper Input", "Sources", "Recall", "Saved Papers"])
     with tabs[0]:
         paper_input_tab()
     with tabs[1]:
         sources_tab()
     with tabs[2]:
+        recall_tab()
+    with tabs[3]:
         saved_papers_tab()
 
     st.sidebar.title("Local files")

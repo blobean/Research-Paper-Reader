@@ -12,6 +12,7 @@ The app does not use a database, login, cloud deployment, patient data, or an AI
 - Pull out clues for methods, results, and limitations to help guide reading.
 - Extract sources from the References or Bibliography section when present.
 - Edit and download the extracted sources list.
+- Search the paper, extracted points, and sources by keyword in the Recall tab.
 - Save, load, view, and delete previous paper summaries.
 
 ## Installation
@@ -50,6 +51,10 @@ Uploaded files are read locally in the app. The app does not send paper text to 
 ## Sources
 
 The **Sources** tab lists references extracted from the uploaded or pasted paper. If the app cannot find a References or Bibliography section, you can still paste or edit the sources manually. The source list can be downloaded as a CSV file.
+
+## Recall
+
+The **Recall** tab lets you search for specific information using keywords. It checks the paper text, summary points, methods points, results points, limitations points, and sources, then shows matching snippets.
 
 ## Notes
 

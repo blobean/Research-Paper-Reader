@@ -443,6 +443,51 @@ def find_sentences_with_terms(text: str, terms: list[str], limit: int = 5) -> li
     return found
 
 
+def recall_keyword_matches(paper: dict[str, Any], query: str, limit: int = 20) -> list[dict[str, str]]:
+    """Search paper content, extracted points, and sources for keyword matches."""
+    keywords = [word.lower() for word in re.findall(r"\b[\w-]+\b", query) if len(word) > 1]
+    if not keywords:
+        return []
+
+    search_blocks = [
+        ("Paper text", paper.get("paper_text", "")),
+        ("Short summary", paper.get("auto_summary", "")),
+        ("Content points", "\n".join(paper.get("auto_key_points", []))),
+        ("Methods points", "\n".join(paper.get("auto_method_points", []))),
+        ("Results points", "\n".join(paper.get("auto_result_points", []))),
+        ("Limitations points", "\n".join(paper.get("auto_limitation_points", []))),
+        ("Sources", "\n".join(paper.get("sources", []))),
+    ]
+
+    matches = []
+    seen = set()
+    for section, text in search_blocks:
+        if not text:
+            continue
+        chunks = split_sentences(text)
+        if not chunks:
+            chunks = [line.strip() for line in text.splitlines() if line.strip()]
+        for chunk in chunks:
+            lowered = chunk.lower()
+            matched_terms = [keyword for keyword in keywords if keyword in lowered]
+            if not matched_terms:
+                continue
+            key = (section, chunk)
+            if key in seen:
+                continue
+            seen.add(key)
+            matches.append(
+                {
+                    "section": section,
+                    "matched_terms": ", ".join(sorted(set(matched_terms))),
+                    "snippet": chunk,
+                }
+            )
+            if len(matches) >= limit:
+                return matches
+    return matches
+
+
 def build_reading_assistant(paper_text: str) -> dict[str, Any]:
     """Create local reading support from a pasted or uploaded paper.
 
