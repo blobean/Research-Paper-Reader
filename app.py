@@ -90,6 +90,24 @@ def replace_active_paper(paper: dict[str, Any]) -> None:
     st.session_state.paper = paper
 
 
+def delete_workspace_paper(index: int) -> None:
+    """Delete one paper from the current workspace tabs."""
+    if not st.session_state.papers:
+        st.session_state.paper = default_paper()
+        st.session_state.active_paper_index = 0
+        return
+
+    if 0 <= index < len(st.session_state.papers):
+        st.session_state.papers.pop(index)
+
+    if st.session_state.papers:
+        st.session_state.active_paper_index = min(index, len(st.session_state.papers) - 1)
+        st.session_state.paper = st.session_state.papers[st.session_state.active_paper_index]
+    else:
+        st.session_state.active_paper_index = 0
+        st.session_state.paper = default_paper()
+
+
 def update_paper(field: str, value: Any) -> None:
     """Update one field in the current paper record."""
     st.session_state.paper[field] = serialise_value(value)
@@ -294,6 +312,10 @@ def paper_input_tab() -> None:
                     key=f"text_{index}",
                 ),
             )
+            if st.button("Delete this paper tab", key=f"delete_tab_{index}"):
+                delete_workspace_paper(index)
+                st.success("Paper tab deleted from this workspace.")
+                st.rerun()
     st.session_state.active_paper_index = previous_active_index
     sync_active_paper()
 
