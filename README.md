@@ -54,7 +54,7 @@ The **Sources** tab lists references extracted from the uploaded or pasted paper
 
 ## Recall
 
-The **Recall** tab lets you ask natural-language questions about the paper. It checks the paper text, summary points, methods points, results points, limitations points, and sources, then returns a short answer card with grouped bullet points and expandable supporting evidence. It does not use an AI API.
+The **Recall** tab lets you ask natural-language questions about the paper. It checks the paper text, summary points, methods points, results points, limitations points, and sources, then returns a short answer, detailed bullet points, and expandable supporting evidence. Recall also uses simple synonym matching, so terms such as "sample", "participants", "cells", and "cohort" can support the same search. It does not use an AI API.
 
 ## Notes
 
