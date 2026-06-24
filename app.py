@@ -253,6 +253,8 @@ def recall_tab() -> None:
 
     st.subheader("Answer")
     st.write(result["answer"])
+    for point in result.get("answer_points", []):
+        st.markdown(f"- {point}")
     st.caption(f"Confidence: {result['confidence']}")
 
     st.subheader("Supporting snippets")

@@ -544,6 +544,7 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
     if not query_terms:
         return {
             "answer": "Enter a more specific question or keyword phrase.",
+            "answer_points": [],
             "confidence": "Low",
             "matches": [],
         }
@@ -590,17 +591,26 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
     if not scored_matches:
         return {
             "answer": "I could not find an answer in the uploaded paper text.",
+            "answer_points": [],
             "confidence": "Low",
             "matches": [],
         }
 
     ranked = sorted(scored_matches, key=lambda item: item["score"], reverse=True)[:limit]
-    answer_sentences = [match["snippet"] for match in ranked[:3]]
+    answer_points = []
+    for match in ranked[:4]:
+        point = re.sub(r"^\s*[-*•]\s*", "", match["snippet"]).strip()
+        point = re.sub(r"\s+", " ", point)
+        if point and point not in answer_points:
+            answer_points.append(point)
+
     max_score = ranked[0]["score"]
     confidence = "High" if max_score >= 4 else "Medium" if max_score >= 2 else "Low"
+    terms_text = ", ".join(sorted(set(query_terms[:4])))
 
     return {
-        "answer": " ".join(answer_sentences),
+        "answer": f"Based on the uploaded paper, the most relevant information about {terms_text} is:",
+        "answer_points": answer_points,
         "confidence": confidence,
         "matches": [
             {
