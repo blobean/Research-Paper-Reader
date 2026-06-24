@@ -492,6 +492,109 @@ def summarise_text(text: str, sentence_count: int = 4) -> str:
     return " ".join(sentence for _, _, sentence in ordered)
 
 
+def simplify_sentence(sentence: str, max_words: int = 22) -> str:
+    """Shorten and lightly rephrase a sentence for beginner summaries."""
+    sentence = re.sub(r"\([^)]*\)", "", sentence)
+    sentence = re.sub(r"\s+", " ", sentence).strip(" .;:")
+    replacements = {
+        "demonstrated": "showed",
+        "indicated": "suggested",
+        "utilized": "used",
+        "significantly": "clearly",
+        "associated with": "linked to",
+        "correlated with": "linked to",
+        "investigated": "studied",
+        "evaluate": "test",
+        "evaluated": "tested",
+        "assessed": "measured",
+    }
+    lowered = sentence.lower()
+    for original, replacement in replacements.items():
+        lowered = lowered.replace(original, replacement)
+    words = lowered.split()
+    if len(words) > max_words:
+        lowered = " ".join(words[:max_words]).rstrip(",;:") + "..."
+    return lowered[:1].upper() + lowered[1:] if lowered else ""
+
+
+def first_relevant_sentence(text: str, terms: list[str]) -> str:
+    """Return the first sentence containing any target term."""
+    for sentence in split_sentences(text):
+        lowered = sentence.lower()
+        if any(term in lowered for term in terms):
+            return sentence
+    sentences = split_sentences(text)
+    return sentences[0] if sentences else ""
+
+
+def generate_reworded_summary(sections: dict[str, str], full_text: str) -> str:
+    """Generate a short reworded summary using local templates."""
+    abstract_or_intro = sections.get("abstract") or sections.get("introduction") or full_text
+    methods_text = sections.get("methods") or full_text
+    results_text = sections.get("results") or sections.get("abstract") or full_text
+    discussion_text = sections.get("discussion") or sections.get("conclusion") or full_text
+
+    focus = simplify_sentence(
+        first_relevant_sentence(
+            abstract_or_intro,
+            ["aim", "objective", "purpose", "investigat", "study", "test", "whether"],
+        )
+    )
+    method = simplify_sentence(
+        first_relevant_sentence(
+            methods_text,
+            ["method", "sample", "participant", "cell", "mice", "assay", "measured", "analysis", "trial"],
+        )
+    )
+    finding = simplify_sentence(
+        first_relevant_sentence(
+            results_text,
+            ["increased", "decreased", "significant", "higher", "lower", "associated", "correlated", "found", "showed"],
+        )
+    )
+    meaning = simplify_sentence(
+        first_relevant_sentence(
+            discussion_text,
+            ["suggest", "indicat", "conclude", "important", "therefore", "may"],
+        )
+    )
+    limitation = simplify_sentence(
+        first_relevant_sentence(
+            full_text,
+            ["limitation", "limited", "small sample", "bias", "future", "further research"],
+        )
+    )
+
+    parts = []
+    if focus:
+        parts.append(f"This paper focuses on {focus[0].lower() + focus[1:]}")
+    if method:
+        parts.append(f"The researchers used {method[0].lower() + method[1:]}")
+    if finding:
+        parts.append(f"The main finding was that {finding[0].lower() + finding[1:]}")
+    if meaning:
+        parts.append(f"Overall, the study suggests that {meaning[0].lower() + meaning[1:]}")
+    if limitation:
+        parts.append(f"A key caution is that {limitation[0].lower() + limitation[1:]}")
+
+    if not parts:
+        return summarise_text(full_text, sentence_count=2)
+    return " ".join(part.rstrip(".") + "." for part in parts[:5])
+
+
+def generate_reworded_points(sections: dict[str, str], full_text: str) -> list[str]:
+    """Create beginner-friendly summary bullets without copying whole passages."""
+    points = []
+    summary = generate_reworded_summary(sections, full_text)
+    for sentence in split_sentences(summary):
+        points.append(sentence)
+    if len(points) < 4:
+        keywords = extract_keywords(full_text, limit=6)
+        if keywords:
+            points.append(f"Important recurring topics include {', '.join(keywords[:5])}.")
+    return points[:6]
+
+
 def extract_key_points(text: str, limit: int = 8) -> list[str]:
     """Return bullet-style reading points from the paper text."""
     summary = summarise_text(text, sentence_count=limit)
@@ -819,7 +922,6 @@ def build_reading_assistant(paper_text: str) -> dict[str, Any]:
     """
     cleaned = clean_paper_text(paper_text)
     sections = extract_sections(cleaned)
-    source_for_summary = sections.get("abstract") or cleaned
 
     method_terms = ["sample", "participants", "cells", "mice", "assay", "measured", "analysis"]
     result_terms = [
@@ -841,8 +943,8 @@ def build_reading_assistant(paper_text: str) -> dict[str, Any]:
         "sections": sections,
         "sources": extract_sources(cleaned),
         "keywords": extract_keywords(cleaned),
-        "short_summary": summarise_text(source_for_summary, sentence_count=3),
-        "key_points": extract_key_points(cleaned, limit=8),
+        "short_summary": generate_reworded_summary(sections, cleaned),
+        "key_points": generate_reworded_points(sections, cleaned),
         "method_points": find_sentences_with_terms(sections.get("methods") or cleaned, method_terms, limit=5),
         "result_points": find_sentences_with_terms(sections.get("results") or cleaned, result_terms, limit=5),
         "limitation_points": find_sentences_with_terms(cleaned, limitation_terms, limit=5),

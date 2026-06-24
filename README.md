@@ -9,7 +9,7 @@ The app does not use a database, login, cloud deployment, patient data, or an AI
 - Record paper information such as title, authors, journal, DOI, topic, and review date.
 - Paste paper text or upload multiple TXT/PDF files.
 - Uploaded paper text is stored locally but hidden from the Paper Input view after upload.
-- Extract a short local summary, keywords, and reading points from the paper text.
+- Generate a short reworded local summary, keywords, and reading points from the paper text.
 - View summaries in a separate Summary tab, with subtabs for each uploaded paper.
 - Delete uploaded paper tabs from the current workspace.
 - Save each uploaded paper from its own Paper Input subtab.
