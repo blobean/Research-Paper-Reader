@@ -140,17 +140,23 @@ def render_wrapped_table(rows: list[dict[str, Any]]) -> None:
             table-layout: fixed;
         }}
         .wrapped-table th {{
-            background: #f6f6f6;
+            background: #e8eef7;
+            color: #111827;
             font-weight: 700;
+            font-size: 1rem;
+            line-height: 1.35;
         }}
         .wrapped-table th,
         .wrapped-table td {{
-            border: 1px solid #dddddd;
+            border: 1px solid #c9d2df;
             padding: 0.65rem;
             vertical-align: top;
             white-space: normal;
             overflow-wrap: anywhere;
             word-break: break-word;
+        }}
+        .wrapped-table td {{
+            color: #1f2937;
         }}
         </style>
         <table class="wrapped-table">
@@ -349,16 +355,11 @@ def paper_input_tab() -> None:
             )
             update_paper("date_reviewed", reviewed)
 
-            update_paper(
-                "paper_text",
-                st.text_area(
-                    "Paper text",
-                    value=paper_item.get("paper_text", ""),
-                    height=360,
-                    help="Paste the full text, abstract, or selected sections of the paper.",
-                    key=f"text_{index}",
-                ),
-            )
+            if paper_item.get("paper_text"):
+                word_count = len(paper_item["paper_text"].split())
+                st.caption(f"Uploaded paper text stored locally ({word_count} words).")
+            else:
+                st.caption("No paper text uploaded for this tab yet.")
             if st.button("Delete this paper tab", key=f"delete_tab_{index}"):
                 delete_workspace_paper(index)
                 st.success("Paper tab deleted from this workspace.")
