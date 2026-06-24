@@ -642,51 +642,26 @@ def _deepseek_endpoint() -> str:
     return f"{base_url}/chat/completions"
 
 
-def call_deepseek_summary(cleaned_text: str) -> dict[str, Any] | None:
-    """Ask DeepSeek for a structured beginner-friendly paper summary.
-
-    The app remains local-first: this function only runs when DEEPSEEK_API_KEY
-    is present, and any API or parsing problem falls back to the local summary.
-    """
+def _deepseek_chat_json(
+    prompt: str,
+    system_message: str,
+    max_tokens: int = 1400,
+) -> tuple[dict[str, Any], str] | None:
+    """Call DeepSeek's OpenAI-compatible chat API and parse a JSON response."""
     api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if not api_key:
         return None
 
     model = os.environ.get("DEEPSEEK_MODEL", DEEPSEEK_MODEL).strip() or DEEPSEEK_MODEL
-    try:
-        max_chars = int(os.environ.get("DEEPSEEK_MAX_CHARS", DEEPSEEK_MAX_CHARS))
-    except ValueError:
-        max_chars = DEEPSEEK_MAX_CHARS
-    paper_excerpt = cleaned_text[:max(4000, max_chars)]
-
-    prompt = f"""
-Read the research paper text below and return only valid JSON with these keys:
-short_summary: one short beginner-friendly paragraph in plain English.
-key_points: 4 concise bullet points.
-keywords: 8 important biomedical or research terms.
-method_points: up to 5 points about methods, samples, assays, measures, or analysis.
-result_points: up to 5 points about findings or results.
-limitation_points: up to 5 limitations or cautions stated or strongly implied by the paper.
-
-Do not invent citations, statistics, or claims. Use simple wording suitable for
-a first-year biomedical science student.
-
-Paper text:
-{paper_excerpt}
-""".strip()
-
     payload = {
         "model": model,
         "messages": [
-            {
-                "role": "system",
-                "content": "You summarise research papers accurately and return strict JSON.",
-            },
+            {"role": "system", "content": system_message},
             {"role": "user", "content": prompt},
         ],
         "response_format": {"type": "json_object"},
         "temperature": 0.2,
-        "max_tokens": 1400,
+        "max_tokens": max_tokens,
         "stream": False,
     }
     request = urllib.request.Request(
@@ -708,18 +683,125 @@ Paper text:
     except (KeyError, IndexError, json.JSONDecodeError, OSError, urllib.error.URLError):
         return None
 
+    return generated, model
+
+
+def call_deepseek_summary(cleaned_text: str) -> dict[str, Any] | None:
+    """Ask DeepSeek for a structured beginner-friendly paper summary.
+
+    The app remains local-first: this function only runs when DEEPSEEK_API_KEY
+    is present, and any API or parsing problem falls back to the local summary.
+    """
+    try:
+        max_chars = int(os.environ.get("DEEPSEEK_MAX_CHARS", DEEPSEEK_MAX_CHARS))
+    except ValueError:
+        max_chars = DEEPSEEK_MAX_CHARS
+    paper_excerpt = cleaned_text[:max(4000, max_chars)]
+
+    prompt = f"""
+Read the research paper text below and return only valid JSON with these keys:
+short_summary: one short beginner-friendly paragraph that explains the research question, approach, main finding, and why it matters.
+key_points: 5 concise content points covering the aim, methods, main results, interpretation, and study caution.
+keywords: 8 important biomedical or research terms.
+method_points: up to 5 points about methods, samples, assays, measures, or analysis.
+result_points: up to 5 points about findings or results.
+limitation_points: up to 5 limitations or cautions stated or strongly implied by the paper.
+
+Do not invent citations, statistics, or claims. Use simple wording suitable for
+a first-year biomedical science student.
+
+Paper text:
+{paper_excerpt}
+""".strip()
+
+    result = _deepseek_chat_json(
+        prompt,
+        "You summarise research papers accurately and return strict JSON.",
+        max_tokens=1600,
+    )
+    if not result:
+        return None
+
+    generated, model = result
     short_summary = str(generated.get("short_summary", "")).strip()
     if not short_summary:
         return None
 
     return {
         "short_summary": short_summary,
-        "key_points": _clean_deepseek_list(generated.get("key_points"), limit=4),
+        "key_points": _clean_deepseek_list(generated.get("key_points"), limit=5),
         "keywords": _clean_deepseek_list(generated.get("keywords"), limit=8),
         "method_points": _clean_deepseek_list(generated.get("method_points"), limit=5),
         "result_points": _clean_deepseek_list(generated.get("result_points"), limit=5),
         "limitation_points": _clean_deepseek_list(generated.get("limitation_points"), limit=5),
         "summary_provider": f"DeepSeek ({model})",
+    }
+
+
+def call_deepseek_comparison(papers: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Ask DeepSeek to compare the selected papers using their extracted content."""
+    if len(papers) < 2:
+        return None
+
+    paper_briefs = []
+    for index, paper in enumerate(papers, start=1):
+        title = paper.get("paper_title") or paper.get("uploaded_file_name") or f"Paper {index}"
+        brief = {
+            "title": title,
+            "summary": paper.get("auto_summary", ""),
+            "key_points": paper.get("auto_key_points", []),
+            "keywords": paper.get("auto_keywords", []),
+            "methods": paper.get("auto_method_points", []),
+            "results": paper.get("auto_result_points", []),
+            "limitations": paper.get("auto_limitation_points", []),
+            "text_excerpt": clean_paper_text(paper.get("paper_text", ""))[:8000],
+        }
+        paper_briefs.append(brief)
+
+    prompt = f"""
+Compare these research papers and return only valid JSON with these keys:
+comparison_summary: one concise paragraph explaining the most important similarities and differences.
+shared_themes: 3 to 6 shared themes across the papers.
+key_differences: 3 to 6 important differences between papers.
+paper_takeaways: an object where each key is a paper title and each value is a list of 2 to 4 key takeaways.
+possible_oppositions: up to 4 places where findings, populations, methods, or interpretations may differ or conflict.
+study_cautions: up to 5 cautions about comparing these papers fairly.
+
+Use only the supplied paper content. Do not invent citations, statistics, sample
+sizes, or findings. Keep the wording clear for a first-year biomedical science
+student.
+
+Papers:
+{json.dumps(paper_briefs, ensure_ascii=False)}
+""".strip()
+
+    result = _deepseek_chat_json(
+        prompt,
+        "You compare research papers accurately and return strict JSON.",
+        max_tokens=1800,
+    )
+    if not result:
+        return None
+
+    generated, model = result
+    comparison_summary = str(generated.get("comparison_summary", "")).strip()
+    if not comparison_summary:
+        return None
+
+    raw_takeaways = generated.get("paper_takeaways", {})
+    paper_takeaways = {}
+    if isinstance(raw_takeaways, dict):
+        for title, takeaways in raw_takeaways.items():
+            paper_takeaways[str(title)] = _clean_deepseek_list(takeaways, limit=4)
+
+    return {
+        "comparison_summary": comparison_summary,
+        "shared_themes": _clean_deepseek_list(generated.get("shared_themes"), limit=6),
+        "key_differences": _clean_deepseek_list(generated.get("key_differences"), limit=6),
+        "paper_takeaways": paper_takeaways,
+        "possible_oppositions": _clean_deepseek_list(generated.get("possible_oppositions"), limit=4),
+        "study_cautions": _clean_deepseek_list(generated.get("study_cautions"), limit=5),
+        "comparison_provider": f"DeepSeek ({model})",
     }
 
 
@@ -953,7 +1035,13 @@ def compare_papers(papers: list[dict[str, Any]]) -> dict[str, Any]:
         )
 
     if not prepared:
-        return {"papers": [], "shared_keywords": [], "unique_keywords": {}, "oppositions": []}
+        return {
+            "papers": [],
+            "shared_keywords": [],
+            "unique_keywords": {},
+            "oppositions": [],
+            "comparison_provider": "Local extractor",
+        }
 
     keyword_sets = [item["keywords"] for item in prepared if item["keywords"]]
     shared_keywords = sorted(set.intersection(*keyword_sets)) if keyword_sets else []
@@ -1026,14 +1114,20 @@ def compare_papers(papers: list[dict[str, Any]]) -> dict[str, Any]:
                     }
                 )
 
-    return {
+    comparison = {
         "papers": prepared,
         "shared_keywords": shared_keywords,
         "common_themes": common_themes,
         "common_ideas": common_ideas,
         "unique_keywords": unique_keywords,
         "oppositions": oppositions,
+        "comparison_provider": "Local extractor",
     }
+
+    deepseek_comparison = call_deepseek_comparison(papers)
+    if deepseek_comparison:
+        comparison.update(deepseek_comparison)
+    return comparison
 
 
 def build_reading_assistant(paper_text: str) -> dict[str, Any]:

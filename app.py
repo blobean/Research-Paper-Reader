@@ -474,7 +474,7 @@ def recall_tab() -> None:
 
 def comparison_tab() -> None:
     st.header("Comparison")
-    st.write("Compare uploaded papers side by side, including shared themes, unique points, and possible opposing findings.")
+    st.write("Compare uploaded papers side by side, including shared themes, unique points, and possible opposing findings. DeepSeek assists when configured.")
 
     if len(st.session_state.papers) < 2:
         st.info("Upload at least two papers in the Paper Input tab to use comparison.")
@@ -494,6 +494,35 @@ def comparison_tab() -> None:
         return
 
     comparison = compare_papers(selected_papers)
+
+    if comparison.get("comparison_provider"):
+        st.caption(f"Comparison generated with {comparison['comparison_provider']}.")
+
+    if comparison.get("comparison_summary"):
+        st.subheader("AI comparison overview")
+        st.write(comparison["comparison_summary"])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Shared content points")
+            for point in comparison.get("shared_themes", []) or ["No shared AI themes returned."]:
+                st.markdown(f"- {point}")
+        with col2:
+            st.subheader("Key differences")
+            for point in comparison.get("key_differences", []) or ["No AI differences returned."]:
+                st.markdown(f"- {point}")
+
+        if comparison.get("paper_takeaways"):
+            st.subheader("Takeaways by paper")
+            for title, takeaways in comparison["paper_takeaways"].items():
+                with st.expander(title):
+                    for takeaway in takeaways or ["No takeaways returned."]:
+                        st.markdown(f"- {takeaway}")
+
+        if comparison.get("study_cautions"):
+            st.subheader("Comparison cautions")
+            for caution in comparison["study_cautions"]:
+                st.markdown(f"- {caution}")
 
     st.subheader("Side-by-side details")
     detail_rows = []
@@ -542,7 +571,10 @@ def comparison_tab() -> None:
         st.caption("No overlapping idea snippets found.")
 
     st.subheader("Possible opposing findings")
-    if comparison["oppositions"]:
+    if comparison.get("possible_oppositions"):
+        for point in comparison["possible_oppositions"]:
+            st.markdown(f"- {point}")
+    elif comparison["oppositions"]:
         render_wrapped_table(comparison["oppositions"])
     else:
         st.caption("No obvious opposing increase/decrease result language found.")

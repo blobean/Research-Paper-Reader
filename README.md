@@ -10,7 +10,7 @@ The app does not use a database, login, cloud deployment, or patient data. It ca
 - Paste paper text or upload multiple TXT/PDF files.
 - Uploaded paper text is stored locally but hidden from the Paper Input view after upload.
 - Generate a shorter reworded summary, highlighted key points, and keywords from the paper text.
-- Use DeepSeek for summary extraction when `DEEPSEEK_API_KEY` is set, with local extraction as a fallback.
+- Use DeepSeek for summary extraction and paper comparison when `DEEPSEEK_API_KEY` is set, with local extraction as a fallback.
 - View summaries in a separate Summary tab, with subtabs for each uploaded paper.
 - Delete uploaded paper tabs from the current workspace.
 - Save each uploaded paper from its own Paper Input subtab.
@@ -18,7 +18,7 @@ The app does not use a database, login, cloud deployment, or patient data. It ca
 - Extract sources from the References or Bibliography section when present.
 - Edit and download the extracted sources list.
 - Ask questions about the paper in the Recall tab and receive local answers with supporting snippets.
-- Compare multiple uploaded papers side by side, including shared themes, unique themes, and possible opposing findings.
+- Compare multiple uploaded papers side by side, including DeepSeek-assisted shared themes, differences, takeaways, cautions, unique themes, and possible opposing findings.
 - Save, load, view, and delete previous paper summaries.
 
 ## Installation
@@ -87,7 +87,7 @@ The **Recall** tab lets you ask natural-language questions about the paper. It c
 
 ## Comparison
 
-The **Comparison** tab works after at least two papers have been uploaded. It shows side-by-side summaries, common themes, common ideas with evidence from both papers, unique themes for each paper, possible opposing increase/decrease findings, and extracted methods/results/limitations points for each selected paper.
+The **Comparison** tab works after at least two papers have been uploaded. When `DEEPSEEK_API_KEY` is configured, it asks DeepSeek to generate a plain-language comparison overview, shared content points, key differences, takeaways by paper, possible opposing findings, and cautions for fair comparison. If DeepSeek is not configured or the API call fails, it falls back to local side-by-side summaries, common themes, common ideas with evidence from both papers, unique themes for each paper, possible opposing increase/decrease findings, and extracted methods/results/limitations points for each selected paper.
 
 ## Notes
 
