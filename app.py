@@ -18,7 +18,7 @@ from utils import (
     extract_text_from_upload,
     load_saved_papers,
     make_paper_id,
-    recall_keyword_matches,
+    recall_answer_question,
     save_paper,
     serialise_value,
 )
@@ -230,32 +230,34 @@ def sources_tab() -> None:
 
 def recall_tab() -> None:
     st.header("Recall")
-    st.write("Search the uploaded paper, extracted summary points, and sources using keywords.")
+    st.write("Ask a question about the uploaded paper. The app answers using only the paper text and extracted points.")
 
     paper = st.session_state.paper
-    query = st.text_input(
-        "Keyword search",
-        placeholder="Example: apoptosis, ELISA, sample size, limitation",
+    question = st.text_input(
+        "Question",
+        placeholder="Example: What did the paper find about apoptosis?",
     )
 
     if not paper.get("paper_text", "").strip() and not paper.get("auto_summary", "").strip():
         st.info("Upload or paste a paper in the Paper Input tab before using recall.")
         return
 
-    if not query.strip():
-        st.caption("Enter one or more keywords to find matching information.")
+    if not question.strip():
+        st.caption("Enter a question about the paper to retrieve a local answer.")
         return
 
-    matches = recall_keyword_matches(paper, query)
-    if not matches:
-        st.warning("No matching information found for those keywords.")
+    result = recall_answer_question(paper, question)
+    if not result["matches"]:
+        st.warning(result["answer"])
         return
 
-    st.success(f"Found {len(matches)} matching item{'s' if len(matches) != 1 else ''}.")
-    st.dataframe(pd.DataFrame(matches), use_container_width=True, hide_index=True)
+    st.subheader("Answer")
+    st.write(result["answer"])
+    st.caption(f"Confidence: {result['confidence']}")
 
-    st.subheader("Matched snippets")
-    for index, match in enumerate(matches, start=1):
+    st.subheader("Supporting snippets")
+    st.dataframe(pd.DataFrame(result["matches"]), use_container_width=True, hide_index=True)
+    for index, match in enumerate(result["matches"], start=1):
         with st.expander(f"{index}. {match['section']} - {match['matched_terms']}"):
             st.write(match["snippet"])
 

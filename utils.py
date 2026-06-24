@@ -82,6 +82,48 @@ STOPWORDS = {
     "with",
 }
 
+QUESTION_WORDS = {
+    "a",
+    "an",
+    "any",
+    "are",
+    "based",
+    "be",
+    "by",
+    "can",
+    "did",
+    "do",
+    "does",
+    "explain",
+    "find",
+    "for",
+    "give",
+    "how",
+    "in",
+    "is",
+    "list",
+    "me",
+    "of",
+    "on",
+    "paper",
+    "show",
+    "study",
+    "tell",
+    "the",
+    "there",
+    "this",
+    "to",
+    "was",
+    "were",
+    "what",
+    "when",
+    "where",
+    "whether",
+    "which",
+    "who",
+    "why",
+}
+
 SECTION_ALIASES = {
     "abstract": ["abstract", "summary"],
     "introduction": ["introduction", "background"],
@@ -486,6 +528,89 @@ def recall_keyword_matches(paper: dict[str, Any], query: str, limit: int = 20) -
             if len(matches) >= limit:
                 return matches
     return matches
+
+
+def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5) -> dict[str, Any]:
+    """Answer a natural-language question using only local paper text.
+
+    This is extractive rather than generative: the answer is assembled from the
+    most relevant sentences found in the paper and extracted sections.
+    """
+    query_terms = [
+        word.lower()
+        for word in re.findall(r"\b[A-Za-z][A-Za-z-]{2,}\b", question)
+        if word.lower() not in QUESTION_WORDS and word.lower() not in STOPWORDS
+    ]
+    if not query_terms:
+        return {
+            "answer": "Enter a more specific question or keyword phrase.",
+            "confidence": "Low",
+            "matches": [],
+        }
+
+    search_blocks = [
+        ("Short summary", paper.get("auto_summary", "")),
+        ("Content points", "\n".join(paper.get("auto_key_points", []))),
+        ("Methods points", "\n".join(paper.get("auto_method_points", []))),
+        ("Results points", "\n".join(paper.get("auto_result_points", []))),
+        ("Limitations points", "\n".join(paper.get("auto_limitation_points", []))),
+        ("Paper text", paper.get("paper_text", "")),
+        ("Sources", "\n".join(paper.get("sources", []))),
+    ]
+
+    scored_matches = []
+    seen = set()
+    for section, text in search_blocks:
+        if not text:
+            continue
+        chunks = split_sentences(text)
+        if not chunks:
+            chunks = [line.strip() for line in text.splitlines() if line.strip()]
+        for chunk in chunks:
+            lowered = chunk.lower()
+            matched_terms = [term for term in query_terms if term in lowered]
+            if not matched_terms:
+                continue
+            phrase_bonus = 2 if " ".join(query_terms) in lowered else 0
+            section_bonus = 1 if section != "Paper text" else 0
+            score = len(set(matched_terms)) + phrase_bonus + section_bonus
+            key = (section, chunk)
+            if key in seen:
+                continue
+            seen.add(key)
+            scored_matches.append(
+                {
+                    "score": score,
+                    "section": section,
+                    "matched_terms": ", ".join(sorted(set(matched_terms))),
+                    "snippet": chunk,
+                }
+            )
+
+    if not scored_matches:
+        return {
+            "answer": "I could not find an answer in the uploaded paper text.",
+            "confidence": "Low",
+            "matches": [],
+        }
+
+    ranked = sorted(scored_matches, key=lambda item: item["score"], reverse=True)[:limit]
+    answer_sentences = [match["snippet"] for match in ranked[:3]]
+    max_score = ranked[0]["score"]
+    confidence = "High" if max_score >= 4 else "Medium" if max_score >= 2 else "Low"
+
+    return {
+        "answer": " ".join(answer_sentences),
+        "confidence": confidence,
+        "matches": [
+            {
+                "section": match["section"],
+                "matched_terms": match["matched_terms"],
+                "snippet": match["snippet"],
+            }
+            for match in ranked
+        ],
+    }
 
 
 def build_reading_assistant(paper_text: str) -> dict[str, Any]:

@@ -12,7 +12,7 @@ The app does not use a database, login, cloud deployment, patient data, or an AI
 - Pull out clues for methods, results, and limitations to help guide reading.
 - Extract sources from the References or Bibliography section when present.
 - Edit and download the extracted sources list.
-- Search the paper, extracted points, and sources by keyword in the Recall tab.
+- Ask questions about the paper in the Recall tab and receive local answers with supporting snippets.
 - Save, load, view, and delete previous paper summaries.
 
 ## Installation
@@ -54,7 +54,7 @@ The **Sources** tab lists references extracted from the uploaded or pasted paper
 
 ## Recall
 
-The **Recall** tab lets you search for specific information using keywords. It checks the paper text, summary points, methods points, results points, limitations points, and sources, then shows matching snippets.
+The **Recall** tab lets you ask natural-language questions about the paper. It checks the paper text, summary points, methods points, results points, limitations points, and sources, then returns a local extractive answer with supporting snippets. It does not use an AI API.
 
 ## Notes
 
