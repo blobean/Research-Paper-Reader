@@ -28,6 +28,7 @@ def default_paper() -> dict[str, Any]:
     """Return a blank paper record for the summariser."""
     return {
         "paper_id": "",
+        "uploaded_file_name": "",
         "paper_title": "",
         "date_reviewed": date.today().isoformat(),
         "paper_text": "",
@@ -125,10 +126,17 @@ def paper_input_tab() -> None:
         if extracted_text.startswith("PDF reading requires") or extracted_text.startswith("Could not read"):
             st.warning(extracted_text)
         else:
-            update_paper("paper_text", extracted_text)
-            if not paper.get("paper_title"):
-                update_paper("paper_title", uploaded_file.name.rsplit(".", 1)[0])
-            st.success("Uploaded paper text added.")
+            if paper.get("uploaded_file_name") != uploaded_file.name:
+                fresh_paper = default_paper()
+                fresh_paper["uploaded_file_name"] = uploaded_file.name
+                fresh_paper["paper_title"] = uploaded_file.name.rsplit(".", 1)[0]
+                fresh_paper["paper_text"] = extracted_text
+                st.session_state.paper = fresh_paper
+                st.success("New uploaded paper loaded. Previous paper details were cleared.")
+                st.rerun()
+            elif paper.get("paper_text") != extracted_text:
+                update_paper("paper_text", extracted_text)
+                st.success("Uploaded paper text refreshed.")
 
     update_paper(
         "paper_title",
