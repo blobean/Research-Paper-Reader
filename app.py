@@ -161,9 +161,9 @@ def render_wrapped_table(rows: list[dict[str, Any]]) -> None:
     )
 
 
-def save_current_paper(show_success: bool = True) -> bool:
+def save_current_paper(paper_to_save: dict[str, Any] | None = None, show_success: bool = True) -> bool:
     """Save the current paper summary locally."""
-    paper = st.session_state.paper
+    paper = paper_to_save or st.session_state.paper
     if not paper.get("paper_text", "").strip():
         st.warning("Upload or paste a paper before saving.")
         return False
@@ -176,8 +176,12 @@ def save_current_paper(show_success: bool = True) -> bool:
         paper["paper_id"] = make_paper_id(paper["paper_title"])
 
     save_paper(paper)
+    if paper_to_save is None:
+        st.session_state.paper = paper
+        if st.session_state.papers:
+            st.session_state.papers[st.session_state.active_paper_index] = paper
     if show_success:
-        st.success("Paper summary saved locally.")
+        st.success(f"Saved '{paper['paper_title']}' locally.")
     return True
 
 
@@ -300,7 +304,7 @@ def paper_input_tab() -> None:
             st.success(f"Loaded {added_count} new paper{'s' if added_count != 1 else ''}.")
             st.rerun()
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Summarise paper", type="primary"):
             run_extraction()
@@ -314,9 +318,6 @@ def paper_input_tab() -> None:
             sync_active_paper()
             st.rerun()
     with col3:
-        if st.button("Save summary"):
-            save_current_paper()
-    with col4:
         if st.button("Start new paper"):
             new_paper = default_paper()
             st.session_state.papers.append(new_paper)
@@ -353,10 +354,15 @@ def paper_input_tab() -> None:
                 st.caption(f"Uploaded paper text stored locally ({word_count} words).")
             else:
                 st.caption("No paper text uploaded for this tab yet.")
-            if st.button("Delete this paper tab", key=f"delete_tab_{index}"):
-                delete_workspace_paper(index)
-                st.success("Paper tab deleted from this workspace.")
-                st.rerun()
+            action_col1, action_col2 = st.columns(2)
+            with action_col1:
+                if st.button("Save this paper", key=f"save_tab_{index}"):
+                    save_current_paper(paper_item)
+            with action_col2:
+                if st.button("Delete this paper tab", key=f"delete_tab_{index}"):
+                    delete_workspace_paper(index)
+                    st.success("Paper tab deleted from this workspace.")
+                    st.rerun()
     st.session_state.active_paper_index = previous_active_index
     sync_active_paper()
 

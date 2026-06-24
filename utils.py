@@ -267,9 +267,11 @@ def load_saved_papers() -> list[dict[str, Any]]:
 def save_paper(paper: dict[str, Any]) -> None:
     """Add or update one paper review in saved_papers.json."""
     ensure_storage_files()
+    if not paper.get("paper_id"):
+        paper["paper_id"] = make_paper_id(paper.get("paper_title", "untitled_paper"))
     papers = load_saved_papers()
     existing_index = next(
-        (index for index, item in enumerate(papers) if item.get("paper_id") == paper["paper_id"]),
+        (index for index, item in enumerate(papers) if item.get("paper_id") == paper.get("paper_id")),
         None,
     )
 
