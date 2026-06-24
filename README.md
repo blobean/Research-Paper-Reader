@@ -9,6 +9,7 @@ The app does not use a database, login, cloud deployment, patient data, or an AI
 - Record paper information such as title, authors, journal, DOI, topic, and review date.
 - Paste paper text or upload multiple TXT/PDF files.
 - Extract a short local summary, keywords, and reading points from the paper text.
+- View summaries in separate subtabs when multiple papers are uploaded.
 - Pull out clues for methods, results, and limitations to help guide reading.
 - Extract sources from the References or Bibliography section when present.
 - Edit and download the extracted sources list.

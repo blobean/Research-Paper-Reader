@@ -141,6 +141,70 @@ def run_extraction() -> None:
     st.success(f"Extracted summary points from about {assistant['word_count']} words.")
 
 
+def render_paper_summary(paper: dict[str, Any]) -> None:
+    """Display extracted summary information for one paper."""
+    if paper.get("auto_summary"):
+        st.subheader("Short Summary")
+        st.write(paper["auto_summary"])
+
+    if paper.get("auto_keywords"):
+        st.subheader("Keywords")
+        st.write(", ".join(paper["auto_keywords"]))
+
+    if paper.get("auto_key_points"):
+        st.subheader("Content Points")
+        for point in paper["auto_key_points"]:
+            st.markdown(f"- {point}")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.subheader("Methods Points")
+        if paper.get("auto_method_points"):
+            for point in paper["auto_method_points"]:
+                st.markdown(f"- {point}")
+        else:
+            st.caption("No methods points extracted yet.")
+    with col2:
+        st.subheader("Results Points")
+        if paper.get("auto_result_points"):
+            for point in paper["auto_result_points"]:
+                st.markdown(f"- {point}")
+        else:
+            st.caption("No results points extracted yet.")
+    with col3:
+        st.subheader("Limitations Points")
+        if paper.get("auto_limitation_points"):
+            for point in paper["auto_limitation_points"]:
+                st.markdown(f"- {point}")
+        else:
+            st.caption("No limitations points extracted yet.")
+
+
+def render_summary_section() -> None:
+    """Display summaries, using subtabs when multiple papers are loaded."""
+    papers_with_content = [
+        paper
+        for paper in (st.session_state.papers or [st.session_state.paper])
+        if paper.get("paper_text") or paper.get("auto_summary")
+    ]
+    if not papers_with_content:
+        return
+
+    st.header("Summary")
+    if len(papers_with_content) == 1:
+        render_paper_summary(papers_with_content[0])
+        return
+
+    tab_labels = [
+        paper.get("paper_title") or paper.get("uploaded_file_name") or f"Paper {index + 1}"
+        for index, paper in enumerate(papers_with_content)
+    ]
+    summary_tabs = st.tabs(tab_labels)
+    for tab, paper in zip(summary_tabs, papers_with_content):
+        with tab:
+            render_paper_summary(paper)
+
+
 def paper_input_tab() -> None:
     st.header("Paper Input")
     st.write("Upload a research paper or paste its text. The app summarises the content locally on this computer.")
@@ -237,41 +301,7 @@ def paper_input_tab() -> None:
             st.session_state.paper = new_paper
             st.rerun()
 
-    if paper.get("auto_summary"):
-        st.subheader("Short Summary")
-        st.write(paper["auto_summary"])
-
-    if paper.get("auto_keywords"):
-        st.subheader("Keywords")
-        st.write(", ".join(paper["auto_keywords"]))
-
-    if paper.get("auto_key_points"):
-        st.subheader("Content Points")
-        for point in paper["auto_key_points"]:
-            st.markdown(f"- {point}")
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.subheader("Methods Points")
-        if paper.get("auto_method_points"):
-            for point in paper["auto_method_points"]:
-                st.markdown(f"- {point}")
-        else:
-            st.caption("No methods points extracted yet.")
-    with col2:
-        st.subheader("Results Points")
-        if paper.get("auto_result_points"):
-            for point in paper["auto_result_points"]:
-                st.markdown(f"- {point}")
-        else:
-            st.caption("No results points extracted yet.")
-    with col3:
-        st.subheader("Limitations Points")
-        if paper.get("auto_limitation_points"):
-            for point in paper["auto_limitation_points"]:
-                st.markdown(f"- {point}")
-        else:
-            st.caption("No limitations points extracted yet.")
+    render_summary_section()
 
 
 def sources_tab() -> None:
