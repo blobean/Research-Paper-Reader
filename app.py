@@ -6,6 +6,7 @@ A local Streamlit summariser for beginner biomedical research paper reading.
 from __future__ import annotations
 
 import html
+import os
 from datetime import date
 from typing import Any
 
@@ -41,6 +42,7 @@ def default_paper() -> dict[str, Any]:
         "auto_method_points": [],
         "auto_result_points": [],
         "auto_limitation_points": [],
+        "summary_provider": "",
         "sources": [],
     }
 
@@ -65,12 +67,30 @@ def normalise_paper(paper: dict[str, Any]) -> dict[str, Any]:
 def initialise_session() -> None:
     """Set up local storage and session state."""
     ensure_storage_files()
+    configure_deepseek_from_secrets()
     if "paper" not in st.session_state:
         st.session_state.paper = default_paper()
     if "papers" not in st.session_state:
         st.session_state.papers = []
     if "active_paper_index" not in st.session_state:
         st.session_state.active_paper_index = 0
+
+
+def configure_deepseek_from_secrets() -> None:
+    """Allow Streamlit secrets to configure the DeepSeek API key."""
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        return
+    try:
+        api_key = st.secrets.get("DEEPSEEK_API_KEY", "")
+    except Exception:
+        api_key = ""
+    if api_key:
+        os.environ["DEEPSEEK_API_KEY"] = str(api_key)
+
+
+def deepseek_is_enabled() -> bool:
+    """Return whether DeepSeek summarisation is configured."""
+    return bool(os.environ.get("DEEPSEEK_API_KEY", "").strip())
 
 
 def sync_active_paper() -> None:
@@ -200,6 +220,7 @@ def run_extraction() -> None:
     update_paper("auto_method_points", assistant["method_points"])
     update_paper("auto_result_points", assistant["result_points"])
     update_paper("auto_limitation_points", assistant["limitation_points"])
+    update_paper("summary_provider", assistant.get("summary_provider", "Local extractor"))
     update_paper("sources", assistant["sources"])
 
     if not paper.get("paper_title", "").strip():
@@ -212,17 +233,19 @@ def run_extraction() -> None:
 def render_paper_summary(paper: dict[str, Any]) -> None:
     """Display extracted summary information for one paper."""
     if paper.get("auto_summary"):
-        st.subheader("Short Summary")
+        if paper.get("summary_provider"):
+            st.caption(f"Generated with {paper['summary_provider']}.")
+        st.subheader("Reworded Summary")
         st.write(paper["auto_summary"])
+
+    if paper.get("auto_key_points"):
+        st.subheader("Key Points")
+        for point in paper["auto_key_points"]:
+            st.markdown(f"- **{point}**")
 
     if paper.get("auto_keywords"):
         st.subheader("Keywords")
-        st.write(", ".join(paper["auto_keywords"]))
-
-    if paper.get("auto_key_points"):
-        st.subheader("Content Points")
-        for point in paper["auto_key_points"]:
-            st.markdown(f"- {point}")
+        st.write(", ".join(paper["auto_keywords"][:8]))
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -274,7 +297,7 @@ def render_summary_section() -> None:
 
 def paper_input_tab() -> None:
     st.header("Paper Input")
-    st.write("Upload a research paper or paste its text. The app summarises the content locally on this computer.")
+    st.write("Upload a research paper or paste its text. The app can use DeepSeek for faster summaries when configured, with local extraction as a fallback.")
 
     sync_active_paper()
     paper = st.session_state.paper
@@ -556,7 +579,7 @@ def saved_papers_tab() -> None:
                 "Title": paper.get("paper_title", ""),
                 "Date reviewed": paper.get("date_reviewed", ""),
                 "Sources": len(paper.get("sources", [])),
-                "Summary": paper.get("auto_summary", "")[:120],
+                "Summary": paper.get("auto_summary", ""),
             }
             for paper in papers
         ]
@@ -585,7 +608,7 @@ def saved_papers_tab() -> None:
             st.rerun()
 
     st.subheader("Saved summary preview")
-    st.write(selected_paper.get("auto_summary", "No summary saved."))
+    render_paper_summary(normalise_paper(selected_paper))
 
 
 def main() -> None:
@@ -593,7 +616,7 @@ def main() -> None:
     initialise_session()
 
     st.title("Research Paper Reading Helper")
-    st.write("Upload or paste a research paper, then generate local summary points and extract its sources.")
+    st.write("Upload or paste a research paper, then generate summary points and extract its sources.")
 
     tabs = st.tabs(["Paper Input", "Summary", "Sources", "Recall", "Comparison", "Saved Papers"])
     with tabs[0]:
@@ -611,7 +634,9 @@ def main() -> None:
 
     st.sidebar.title("Local files")
     st.sidebar.write("Saved summaries: `saved_papers.json`")
-    st.sidebar.caption("No login, database, cloud service, or AI API is used.")
+    st.sidebar.title("AI provider")
+    st.sidebar.write("DeepSeek: enabled" if deepseek_is_enabled() else "DeepSeek: set `DEEPSEEK_API_KEY` to enable")
+    st.sidebar.caption("Without a DeepSeek key, summarisation stays fully local.")
 
 
 if __name__ == "__main__":

@@ -2,14 +2,15 @@
 
 Research Paper Reading Helper is a local Streamlit app for a Year 1 Biomedical Science student. It helps you upload or paste one or more research papers, extract beginner-friendly summary points, list sources, ask recall questions, and compare papers.
 
-The app does not use a database, login, cloud deployment, patient data, or an AI API. Everything is saved on your own computer.
+The app does not use a database, login, cloud deployment, or patient data. It can optionally use the DeepSeek API for faster, higher-quality summaries; if no DeepSeek key is configured, summarisation falls back to the local extractor.
 
 ## Summary Features
 
 - Record paper information such as title, authors, journal, DOI, topic, and review date.
 - Paste paper text or upload multiple TXT/PDF files.
 - Uploaded paper text is stored locally but hidden from the Paper Input view after upload.
-- Generate a short reworded local summary, keywords, and reading points from the paper text.
+- Generate a shorter reworded summary, highlighted key points, and keywords from the paper text.
+- Use DeepSeek for summary extraction when `DEEPSEEK_API_KEY` is set, with local extraction as a fallback.
 - View summaries in a separate Summary tab, with subtabs for each uploaded paper.
 - Delete uploaded paper tabs from the current workspace.
 - Save each uploaded paper from its own Paper Input subtab.
@@ -45,13 +46,36 @@ Streamlit will show a local browser link, usually:
 http://localhost:8501
 ```
 
+## Optional DeepSeek Setup
+
+To use DeepSeek, set your API key before starting Streamlit:
+
+```bash
+export DEEPSEEK_API_KEY="your-api-key"
+streamlit run app.py
+```
+
+You can also add the key to Streamlit secrets at `.streamlit/secrets.toml`:
+
+```toml
+DEEPSEEK_API_KEY = "your-api-key"
+```
+
+The app calls DeepSeek's OpenAI-compatible API at `https://api.deepseek.com` and defaults to the `deepseek-chat` model. You can override these defaults with:
+
+```bash
+export DEEPSEEK_BASE_URL="https://api.deepseek.com"
+export DEEPSEEK_MODEL="deepseek-chat"
+export DEEPSEEK_MAX_CHARS="60000"
+```
+
 ## Where Data Is Saved
 
 The app creates these local files automatically:
 
 - `saved_papers.json` stores saved paper reviews.
 
-Uploaded files are read locally in the app. The app does not send paper text to an AI API or cloud service.
+Uploaded files are read locally in the app. If `DEEPSEEK_API_KEY` is set, the app sends the paper text excerpt to DeepSeek to generate summary fields. If no key is set or the API call fails, the app uses local summarisation only.
 
 ## Sources
 

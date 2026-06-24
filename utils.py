@@ -1,13 +1,16 @@
 """Utility functions for the Research Paper Reading Helper app.
 
 The app stores everything in local files so it keeps working without a
-database, login, cloud service, or AI API.
+database, login, or cloud service. DeepSeek summarisation is optional.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
+import urllib.error
+import urllib.request
 from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
@@ -25,6 +28,9 @@ DATA_DIR = Path(".")
 SAVED_PAPERS_FILE = DATA_DIR / "saved_papers.json"
 VOCABULARY_FILE = DATA_DIR / "vocabulary.csv"
 EXPORTS_DIR = DATA_DIR / "exports"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_MODEL = "deepseek-chat"
+DEEPSEEK_MAX_CHARS = 60000
 
 STOPWORDS = {
     "about",
@@ -517,6 +523,22 @@ def simplify_sentence(sentence: str, max_words: int = 22) -> str:
     return lowered[:1].upper() + lowered[1:] if lowered else ""
 
 
+def strip_template_prefix(text: str) -> str:
+    """Remove repeated template prefixes from bullet points."""
+    prefixes = [
+        "This paper focuses on ",
+        "The researchers used ",
+        "The main finding was that ",
+        "Overall, the study suggests that ",
+        "A key caution is that ",
+    ]
+    for prefix in prefixes:
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+            break
+    return text[:1].upper() + text[1:] if text else text
+
+
 def first_relevant_sentence(text: str, terms: list[str]) -> str:
     """Return the first sentence containing any target term."""
     for sentence in split_sentences(text):
@@ -568,18 +590,18 @@ def generate_reworded_summary(sections: dict[str, str], full_text: str) -> str:
     parts = []
     if focus:
         parts.append(f"This paper focuses on {focus[0].lower() + focus[1:]}")
-    if method:
-        parts.append(f"The researchers used {method[0].lower() + method[1:]}")
     if finding:
         parts.append(f"The main finding was that {finding[0].lower() + finding[1:]}")
-    if meaning:
-        parts.append(f"Overall, the study suggests that {meaning[0].lower() + meaning[1:]}")
     if limitation:
         parts.append(f"A key caution is that {limitation[0].lower() + limitation[1:]}")
+    if not limitation and method:
+        parts.append(f"The researchers used {method[0].lower() + method[1:]}")
+    if len(parts) < 3 and meaning:
+        parts.append(f"Overall, the study suggests that {meaning[0].lower() + meaning[1:]}")
 
     if not parts:
-        return summarise_text(full_text, sentence_count=2)
-    return " ".join(part.rstrip(".") + "." for part in parts[:5])
+        return summarise_text(full_text, sentence_count=1)
+    return " ".join(part.rstrip(".") + "." for part in parts[:3])
 
 
 def generate_reworded_points(sections: dict[str, str], full_text: str) -> list[str]:
@@ -587,18 +609,118 @@ def generate_reworded_points(sections: dict[str, str], full_text: str) -> list[s
     points = []
     summary = generate_reworded_summary(sections, full_text)
     for sentence in split_sentences(summary):
-        points.append(sentence)
+        points.append(strip_template_prefix(sentence))
     if len(points) < 4:
         keywords = extract_keywords(full_text, limit=6)
         if keywords:
             points.append(f"Important recurring topics include {', '.join(keywords[:5])}.")
-    return points[:6]
+    return points[:4]
 
 
 def extract_key_points(text: str, limit: int = 8) -> list[str]:
     """Return bullet-style reading points from the paper text."""
     summary = summarise_text(text, sentence_count=limit)
     return split_sentences(summary)[:limit]
+
+
+def _clean_deepseek_list(value: Any, limit: int = 8) -> list[str]:
+    """Normalise DeepSeek JSON list fields into display-safe strings."""
+    if isinstance(value, str):
+        items = [line.strip(" -*\t") for line in value.splitlines()]
+    elif isinstance(value, list):
+        items = [str(item).strip(" -*\t") for item in value]
+    else:
+        return []
+    return [item for item in items if item][:limit]
+
+
+def _deepseek_endpoint() -> str:
+    """Return the configured DeepSeek chat completions endpoint."""
+    base_url = os.environ.get("DEEPSEEK_BASE_URL", DEEPSEEK_BASE_URL).rstrip("/")
+    if base_url.endswith("/chat/completions"):
+        return base_url
+    return f"{base_url}/chat/completions"
+
+
+def call_deepseek_summary(cleaned_text: str) -> dict[str, Any] | None:
+    """Ask DeepSeek for a structured beginner-friendly paper summary.
+
+    The app remains local-first: this function only runs when DEEPSEEK_API_KEY
+    is present, and any API or parsing problem falls back to the local summary.
+    """
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    model = os.environ.get("DEEPSEEK_MODEL", DEEPSEEK_MODEL).strip() or DEEPSEEK_MODEL
+    try:
+        max_chars = int(os.environ.get("DEEPSEEK_MAX_CHARS", DEEPSEEK_MAX_CHARS))
+    except ValueError:
+        max_chars = DEEPSEEK_MAX_CHARS
+    paper_excerpt = cleaned_text[:max(4000, max_chars)]
+
+    prompt = f"""
+Read the research paper text below and return only valid JSON with these keys:
+short_summary: one short beginner-friendly paragraph in plain English.
+key_points: 4 concise bullet points.
+keywords: 8 important biomedical or research terms.
+method_points: up to 5 points about methods, samples, assays, measures, or analysis.
+result_points: up to 5 points about findings or results.
+limitation_points: up to 5 limitations or cautions stated or strongly implied by the paper.
+
+Do not invent citations, statistics, or claims. Use simple wording suitable for
+a first-year biomedical science student.
+
+Paper text:
+{paper_excerpt}
+""".strip()
+
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You summarise research papers accurately and return strict JSON.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.2,
+        "max_tokens": 1400,
+        "stream": False,
+    }
+    request = urllib.request.Request(
+        _deepseek_endpoint(),
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            raw_response = response.read().decode("utf-8")
+        response_data = json.loads(raw_response)
+        content = response_data["choices"][0]["message"]["content"]
+        generated = json.loads(content)
+    except (KeyError, IndexError, json.JSONDecodeError, OSError, urllib.error.URLError):
+        return None
+
+    short_summary = str(generated.get("short_summary", "")).strip()
+    if not short_summary:
+        return None
+
+    return {
+        "short_summary": short_summary,
+        "key_points": _clean_deepseek_list(generated.get("key_points"), limit=4),
+        "keywords": _clean_deepseek_list(generated.get("keywords"), limit=8),
+        "method_points": _clean_deepseek_list(generated.get("method_points"), limit=5),
+        "result_points": _clean_deepseek_list(generated.get("result_points"), limit=5),
+        "limitation_points": _clean_deepseek_list(generated.get("limitation_points"), limit=5),
+        "summary_provider": f"DeepSeek ({model})",
+    }
 
 
 def find_sentences_with_terms(text: str, terms: list[str], limit: int = 5) -> list[str]:
@@ -937,7 +1059,7 @@ def build_reading_assistant(paper_text: str) -> dict[str, Any]:
     ]
     limitation_terms = ["limitation", "limited", "bias", "small sample", "future", "not assess"]
 
-    return {
+    local_summary = {
         "cleaned_text": cleaned,
         "word_count": len(re.findall(r"\b\w+\b", cleaned)),
         "sections": sections,
@@ -948,7 +1070,25 @@ def build_reading_assistant(paper_text: str) -> dict[str, Any]:
         "method_points": find_sentences_with_terms(sections.get("methods") or cleaned, method_terms, limit=5),
         "result_points": find_sentences_with_terms(sections.get("results") or cleaned, result_terms, limit=5),
         "limitation_points": find_sentences_with_terms(cleaned, limitation_terms, limit=5),
+        "summary_provider": "Local extractor",
     }
+
+    deepseek_summary = call_deepseek_summary(cleaned)
+    if not deepseek_summary:
+        return local_summary
+
+    for field in [
+        "short_summary",
+        "key_points",
+        "keywords",
+        "method_points",
+        "result_points",
+        "limitation_points",
+        "summary_provider",
+    ]:
+        if deepseek_summary.get(field):
+            local_summary[field] = deepseek_summary[field]
+    return local_summary
 
 
 def _line(label: str, value: Any) -> str:
