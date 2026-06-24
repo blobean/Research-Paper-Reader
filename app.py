@@ -122,13 +122,25 @@ def render_wrapped_table(rows: list[dict[str, Any]]) -> None:
         return
 
     columns = list(rows[0].keys())
-    header_html = "".join(f"<th>{html.escape(str(column))}</th>" for column in columns)
+    header_style = (
+        "background-color:#dbeafe;color:#0f172a;font-weight:800;font-size:16px;"
+        "line-height:1.35;border:1px solid #94a3b8;padding:12px;text-align:left;"
+    )
+    cell_style = (
+        "background-color:#ffffff;color:#111827;font-size:15px;line-height:1.45;"
+        "border:1px solid #cbd5e1;padding:12px;vertical-align:top;"
+        "white-space:normal;overflow-wrap:anywhere;word-break:break-word;"
+    )
+    header_html = "".join(
+        f"<th style=\"{header_style}\">{html.escape(str(column))}</th>"
+        for column in columns
+    )
     body_html = ""
     for row in rows:
         body_html += "<tr>"
         for column in columns:
             value = html.escape(str(row.get(column, ""))).replace("\n", "<br>")
-            body_html += f"<td>{value}</td>"
+            body_html += f"<td style=\"{cell_style}\">{value}</td>"
         body_html += "</tr>"
 
     st.markdown(
@@ -138,25 +150,6 @@ def render_wrapped_table(rows: list[dict[str, Any]]) -> None:
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
-        }}
-        .wrapped-table th {{
-            background: #e8eef7;
-            color: #111827;
-            font-weight: 700;
-            font-size: 1rem;
-            line-height: 1.35;
-        }}
-        .wrapped-table th,
-        .wrapped-table td {{
-            border: 1px solid #c9d2df;
-            padding: 0.65rem;
-            vertical-align: top;
-            white-space: normal;
-            overflow-wrap: anywhere;
-            word-break: break-word;
-        }}
-        .wrapped-table td {{
-            color: #1f2937;
         }}
         </style>
         <table class="wrapped-table">
