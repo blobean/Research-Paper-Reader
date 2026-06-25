@@ -21,6 +21,7 @@ from utils import (
     extract_text_from_upload,
     load_saved_papers,
     make_paper_id,
+    recall_answer_across_papers,
     recall_answer_question,
     save_paper,
     SAVED_PAPERS_FILE,
@@ -437,23 +438,44 @@ def sources_tab() -> None:
 
 def recall_tab() -> None:
     st.header("Recall")
-    st.write("Ask a question about the uploaded paper. The app gives a direct answer from the paper text and extracted points.")
+    st.write("Ask a question across one or more uploaded papers. The app gives a direct answer from paper text and extracted points.")
 
-    paper = st.session_state.paper
+    papers = st.session_state.papers or [st.session_state.paper]
+    available_papers = [
+        paper
+        for paper in papers
+        if paper.get("paper_text", "").strip() or paper.get("auto_summary", "").strip()
+    ]
+    if not available_papers:
+        st.info("Upload or paste a paper in the Paper Input tab before using recall.")
+        return
+
+    labels = [
+        paper.get("paper_title") or paper.get("uploaded_file_name") or f"Paper {index + 1}"
+        for index, paper in enumerate(available_papers)
+    ]
+    selected_labels = st.multiselect("Papers to search", labels, default=labels)
+    selected_papers = [
+        available_papers[labels.index(label)]
+        for label in selected_labels
+    ]
     question = st.text_input(
         "Question",
         placeholder="Example: What did the paper find about apoptosis?",
     )
 
-    if not paper.get("paper_text", "").strip() and not paper.get("auto_summary", "").strip():
-        st.info("Upload or paste a paper in the Paper Input tab before using recall.")
+    if not selected_papers:
+        st.warning("Select at least one paper to search.")
         return
 
     if not question.strip():
-        st.caption("Enter a question about the paper to retrieve a local answer.")
+        st.caption("Enter a question to retrieve a local answer from the selected papers.")
         return
 
-    result = recall_answer_question(paper, question)
+    if len(selected_papers) == 1:
+        result = recall_answer_question(selected_papers[0], question)
+    else:
+        result = recall_answer_across_papers(selected_papers, question)
     if not result["matches"]:
         st.warning(result["answer"])
         return
@@ -473,7 +495,9 @@ def recall_tab() -> None:
 
     with st.expander("Evidence from the paper"):
         for index, match in enumerate(result["matches"], start=1):
-            st.markdown(f"**{index}. {match['section']}**")
+            paper_label = match.get("paper_title")
+            heading = f"{paper_label} - {match['section']}" if paper_label else match["section"]
+            st.markdown(f"**{index}. {heading}**")
             st.caption(f"Matched terms: {match['matched_terms']}")
             st.write(match["snippet"])
 

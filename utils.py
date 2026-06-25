@@ -105,6 +105,9 @@ QUESTION_WORDS = {
     "for",
     "give",
     "how",
+    "happen",
+    "happened",
+    "happens",
     "in",
     "is",
     "list",
@@ -952,8 +955,8 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
     for match in ranked:
         point = re.sub(r"^\s*[-*•]\s*", "", match["snippet"]).strip()
         point = re.sub(r"\s+", " ", point)
-        if len(point) > 220:
-            point = point[:217].rsplit(" ", 1)[0] + "..."
+        if len(point) > 170:
+            point = point[:167].rsplit(" ", 1)[0] + "..."
         if point and point not in concise_points:
             concise_points.append(point)
 
@@ -968,13 +971,101 @@ def recall_answer_question(paper: dict[str, Any], question: str, limit: int = 5)
         answer_groups["Key details"] = concise_points[1:4]
 
     return {
-        "answer": f"Based on the uploaded paper, here is the clearest answer about {terms_text}.",
+        "answer": f"Answer about {terms_text}.",
         "main_point": main_point,
         "answer_groups": answer_groups,
         "key_details": answer_groups.get("Key details", []),
         "confidence": confidence,
         "matches": [
             {
+                "score": match["score"],
+                "section": match["section"],
+                "matched_terms": match["matched_terms"],
+                "snippet": match["snippet"],
+            }
+            for match in ranked
+        ],
+    }
+
+
+def recall_answer_across_papers(
+    papers: list[dict[str, Any]],
+    question: str,
+    limit: int = 8,
+) -> dict[str, Any]:
+    """Answer a recall question using multiple uploaded papers."""
+    usable_papers = [
+        paper
+        for paper in papers
+        if paper.get("paper_text", "").strip() or paper.get("auto_summary", "").strip()
+    ]
+    if not usable_papers:
+        return {
+            "answer": "Upload or paste at least one paper before using recall.",
+            "main_point": "",
+            "answer_groups": {},
+            "key_details": [],
+            "confidence": "Low",
+            "matches": [],
+        }
+
+    combined_matches = []
+    confidence_scores = {"Low": 1, "Medium": 2, "High": 3}
+    best_confidence_score = 1
+    for index, paper in enumerate(usable_papers, start=1):
+        title = paper.get("paper_title") or paper.get("uploaded_file_name") or f"Paper {index}"
+        result = recall_answer_question(paper, question, limit=limit)
+        best_confidence_score = max(
+            best_confidence_score,
+            confidence_scores.get(result.get("confidence", "Low"), 1),
+        )
+        for match in result.get("matches", []):
+            combined_matches.append(
+                {
+                    **match,
+                    "paper_title": title,
+                    "score": match.get("score", 0),
+                }
+            )
+
+    if not combined_matches:
+        return {
+            "answer": "I could not find an answer in the selected papers.",
+            "main_point": "",
+            "answer_groups": {},
+            "key_details": [],
+            "confidence": "Low",
+            "matches": [],
+        }
+
+    ranked = sorted(combined_matches, key=lambda item: item.get("score", 0), reverse=True)[:limit]
+    concise_points = []
+    for match in ranked:
+        point = re.sub(r"^\s*[-*•]\s*", "", match["snippet"]).strip()
+        point = re.sub(r"\s+", " ", point)
+        if len(point) > 170:
+            point = point[:167].rsplit(" ", 1)[0] + "..."
+        labelled_point = f"{match['paper_title']}: {point}"
+        if labelled_point not in concise_points:
+            concise_points.append(labelled_point)
+
+    query_terms = [
+        word.lower()
+        for word in re.findall(r"\b[A-Za-z][A-Za-z-]{2,}\b", question)
+        if word.lower() not in QUESTION_WORDS and word.lower() not in STOPWORDS
+    ]
+    terms_text = ", ".join(sorted(set(query_terms[:4])))
+    confidence = {1: "Low", 2: "Medium", 3: "High"}.get(best_confidence_score, "Low")
+
+    return {
+        "answer": f"Answer about {terms_text}.",
+        "main_point": concise_points[0] if concise_points else "",
+        "answer_groups": {"Main answer": concise_points[:1], "Key details": concise_points[1:4]},
+        "key_details": concise_points[1:4],
+        "confidence": confidence,
+        "matches": [
+            {
+                "paper_title": match["paper_title"],
                 "section": match["section"],
                 "matched_terms": match["matched_terms"],
                 "snippet": match["snippet"],
