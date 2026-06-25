@@ -96,6 +96,44 @@ def deepseek_is_enabled() -> bool:
     return bool(os.environ.get("DEEPSEEK_API_KEY", "").strip())
 
 
+def paper_label(paper: dict[str, Any], index: int = 0) -> str:
+    """Return a readable label for a paper."""
+    return paper.get("paper_title") or paper.get("uploaded_file_name") or f"Paper {index + 1}"
+
+
+def paper_search_text(paper: dict[str, Any]) -> str:
+    """Collect searchable saved-paper text."""
+    fields = [
+        paper.get("paper_title", ""),
+        paper.get("uploaded_file_name", ""),
+        paper.get("auto_summary", ""),
+        " ".join(paper.get("auto_key_points", [])),
+        " ".join(paper.get("auto_keywords", [])),
+        " ".join(paper.get("auto_method_points", [])),
+        " ".join(paper.get("auto_result_points", [])),
+        " ".join(paper.get("auto_limitation_points", [])),
+    ]
+    return " ".join(fields).lower()
+
+
+def paper_category(paper: dict[str, Any]) -> str:
+    """Infer a simple research theme category from saved keywords and summaries."""
+    searchable = paper_search_text(paper)
+    categories = [
+        ("Cell Biology", ["cell", "cells", "apoptosis", "mitosis", "protein", "gene", "genes"]),
+        ("Immunology", ["immune", "immunity", "inflammation", "inflammatory", "cytokine"]),
+        ("Cancer", ["cancer", "tumor", "tumour", "oncology", "carcinoma"]),
+        ("Microbiology", ["bacteria", "bacterial", "virus", "viral", "pathogen", "microbiome"]),
+        ("Clinical / Patients", ["patient", "patients", "clinical", "cohort", "trial", "participant"]),
+        ("Methods / Assays", ["assay", "analysis", "method", "methods", "sequencing", "microscopy"]),
+        ("Biomarkers", ["biomarker", "marker", "diagnostic", "indicator"]),
+    ]
+    for category, terms in categories:
+        if any(term in searchable for term in terms):
+            return category
+    return "Other"
+
+
 def sync_active_paper() -> None:
     """Keep the selected paper and paper list in sync."""
     if st.session_state.papers:
@@ -296,8 +334,15 @@ def render_summary_section() -> None:
         render_paper_summary(papers_with_content[0])
         return
 
+    active_paper_id = st.session_state.paper.get("paper_id")
+    if active_paper_id:
+        papers_with_content = sorted(
+            papers_with_content,
+            key=lambda paper: paper.get("paper_id") != active_paper_id,
+        )
+
     tab_labels = [
-        paper.get("paper_title") or paper.get("uploaded_file_name") or f"Paper {index + 1}"
+        paper_label(paper, index)
         for index, paper in enumerate(papers_with_content)
     ]
     summary_tabs = st.tabs(tab_labels)
@@ -343,6 +388,7 @@ def paper_input_tab() -> None:
     with col1:
         if st.button("Summarise paper", type="primary"):
             run_extraction()
+            st.session_state.active_page = "Summary"
             st.rerun()
     with col2:
         if st.button("Summarise all"):
@@ -351,6 +397,7 @@ def paper_input_tab() -> None:
                 st.session_state.paper = paper_item
                 run_extraction()
             sync_active_paper()
+            st.session_state.active_page = "Summary"
             st.rerun()
     with col3:
         if st.button("Start new paper"):
@@ -649,43 +696,88 @@ def comparison_tab() -> None:
 
 def saved_papers_tab() -> None:
     st.header("Saved Papers")
-    st.write("Load, view, or delete locally saved paper summaries.")
+    st.write("Search saved papers by title, keyword, summary point, method, result, or limitation.")
 
     if st.button("Save current paper"):
         save_current_paper()
 
-    papers = load_saved_papers()
+    papers = [normalise_paper(paper) for paper in load_saved_papers()]
     if not papers:
         st.info("No saved papers yet.")
         return
 
-    table = pd.DataFrame(
-        [
-            {
-                "Title": paper.get("paper_title", ""),
-                "Date reviewed": paper.get("date_reviewed", ""),
-                "Sources": len(paper.get("sources", [])),
-                "Summary": paper.get("auto_summary", ""),
-            }
-            for paper in papers
-        ]
+    search_query = st.text_input(
+        "Search saved papers",
+        placeholder="Try a keyword, topic, method, result, or paper title",
     )
-    render_wrapped_table(table.to_dict("records"))
+    query_terms = [
+        term.lower()
+        for term in search_query.split()
+        if term.strip()
+    ]
+    filtered_papers = [
+        paper
+        for paper in papers
+        if not query_terms or all(term in paper_search_text(paper) for term in query_terms)
+    ]
+    if not filtered_papers:
+        st.warning("No saved papers matched that search.")
+        return
+
+    category_names = sorted({paper_category(paper) for paper in filtered_papers})
+    category_tabs = st.tabs(["All"] + category_names)
+    category_groups = {"All": filtered_papers}
+    for category in category_names:
+        category_groups[category] = [
+            paper for paper in filtered_papers if paper_category(paper) == category
+        ]
+
+    selected_paper = filtered_papers[0]
+    for tab, category in zip(category_tabs, category_groups):
+        with tab:
+            category_papers = category_groups[category]
+            st.caption(f"{len(category_papers)} saved paper{'s' if len(category_papers) != 1 else ''}")
+            table = pd.DataFrame(
+                [
+                    {
+                        "Title": paper_label(paper, index),
+                        "Category": paper_category(paper),
+                        "Keywords": ", ".join(paper.get("auto_keywords", [])[:8]),
+                        "Date reviewed": paper.get("date_reviewed", ""),
+                        "Summary": paper.get("auto_summary", ""),
+                    }
+                    for index, paper in enumerate(category_papers)
+                ]
+            )
+            render_wrapped_table(table.to_dict("records"))
 
     labels = [
-        f"{paper.get('paper_title', 'Untitled paper')} ({paper.get('date_reviewed', 'No date')})"
-        for paper in papers
+        f"{paper_label(paper, index)} ({paper_category(paper)})"
+        for index, paper in enumerate(filtered_papers)
     ]
-    selected_label = st.selectbox("Saved paper", labels)
-    selected_paper = papers[labels.index(selected_label)]
+    selected_label = st.selectbox("Open saved paper", labels)
+    selected_paper = filtered_papers[labels.index(selected_label)]
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Load saved paper"):
+        if st.button("Open in Summary", type="primary"):
             loaded_paper = normalise_paper(selected_paper)
-            st.session_state.papers.append(loaded_paper)
-            st.session_state.active_paper_index = len(st.session_state.papers) - 1
+            existing_index = next(
+                (
+                    index
+                    for index, paper in enumerate(st.session_state.papers)
+                    if paper.get("paper_id") == loaded_paper.get("paper_id")
+                ),
+                None,
+            )
+            if existing_index is None:
+                st.session_state.papers.append(loaded_paper)
+                st.session_state.active_paper_index = len(st.session_state.papers) - 1
+            else:
+                st.session_state.papers[existing_index] = loaded_paper
+                st.session_state.active_paper_index = existing_index
             st.session_state.paper = loaded_paper
+            st.session_state.active_page = "Summary"
             st.rerun()
     with col2:
         if st.button("Delete saved paper"):
@@ -704,18 +796,29 @@ def main() -> None:
     st.title("Research Paper Reading Helper")
     st.write("Upload or paste a research paper, then generate summary points and extract its sources.")
 
-    tabs = st.tabs(["Paper Input", "Summary", "Sources", "Recall", "Comparison", "Saved Papers"])
-    with tabs[0]:
+    page_names = ["Paper Input", "Summary", "Sources", "Recall", "Comparison", "Saved Papers"]
+    if "active_page" not in st.session_state or st.session_state.active_page not in page_names:
+        st.session_state.active_page = page_names[0]
+
+    st.sidebar.title("Navigation")
+    active_page = st.sidebar.radio(
+        "Go to",
+        page_names,
+        index=page_names.index(st.session_state.active_page),
+        key="active_page",
+    )
+
+    if active_page == "Paper Input":
         paper_input_tab()
-    with tabs[1]:
+    elif active_page == "Summary":
         summary_tab()
-    with tabs[2]:
+    elif active_page == "Sources":
         sources_tab()
-    with tabs[3]:
+    elif active_page == "Recall":
         recall_tab()
-    with tabs[4]:
+    elif active_page == "Comparison":
         comparison_tab()
-    with tabs[5]:
+    elif active_page == "Saved Papers":
         saved_papers_tab()
 
     st.sidebar.title("Local files")
