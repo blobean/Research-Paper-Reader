@@ -612,6 +612,74 @@ def check_source_quality(sources: list[str]) -> dict[str, Any]:
     }
 
 
+def check_paper_quality(paper: dict[str, Any]) -> dict[str, Any]:
+    """Give a local, best-effort quality check for the whole paper review."""
+    source_quality = check_source_quality(paper.get("sources", []))
+    word_count = len(re.findall(r"\b\w+\b", paper.get("paper_text", "")))
+    checks = []
+    warnings = []
+    score = 0
+
+    if word_count >= 2500:
+        score += 2
+        checks.append("Paper text looks substantial enough for review.")
+    elif word_count >= 800:
+        score += 1
+        checks.append("Paper text is present, but may be incomplete.")
+        warnings.append("Check that the full paper text was uploaded.")
+    else:
+        warnings.append("Paper text looks short or incomplete.")
+
+    if paper.get("auto_summary"):
+        score += 1
+        checks.append("Summary has been generated.")
+    else:
+        warnings.append("No summary has been generated yet.")
+
+    if len(paper.get("auto_key_points", [])) >= 3:
+        score += 1
+        checks.append("Key content points are available.")
+    else:
+        warnings.append("Few key content points were found.")
+
+    if paper.get("auto_method_points"):
+        score += 1
+        checks.append("Methods information was detected.")
+    else:
+        warnings.append("Methods are missing or hard to identify.")
+
+    if paper.get("auto_result_points"):
+        score += 1
+        checks.append("Results information was detected.")
+    else:
+        warnings.append("Results are missing or hard to identify.")
+
+    if paper.get("auto_limitation_points"):
+        score += 1
+        checks.append("Limitations or cautions were detected.")
+    else:
+        warnings.append("No limitations were detected; check the discussion manually.")
+
+    if source_quality["verdict"] == "Good":
+        score += 2
+        checks.append("Source list looks usable.")
+    elif source_quality["verdict"] == "Needs checking":
+        score += 1
+        warnings.append("Source list needs manual checking.")
+    else:
+        warnings.append("Source list is weak or missing.")
+
+    verdict = "Good" if score >= 8 else "Needs checking" if score >= 5 else "Weak"
+    return {
+        "verdict": verdict,
+        "score": score,
+        "word_count": word_count,
+        "source_quality": source_quality,
+        "checks": checks,
+        "warnings": warnings,
+    }
+
+
 def extract_keywords(text: str, limit: int = 12) -> list[str]:
     """Find likely important biomedical keywords using local word frequency."""
     words = re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", text.lower())

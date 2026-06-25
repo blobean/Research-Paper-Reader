@@ -15,7 +15,7 @@ import streamlit as st
 
 from utils import (
     build_reading_assistant,
-    check_source_quality,
+    check_paper_quality,
     compare_papers,
     delete_paper,
     ensure_storage_files,
@@ -284,28 +284,33 @@ def run_extraction() -> None:
 
 def render_paper_summary(paper: dict[str, Any]) -> None:
     """Display extracted summary information for one paper."""
-    source_quality = check_source_quality(paper.get("sources", []))
-    st.subheader("Source checker")
+    paper_quality = check_paper_quality(paper)
+    source_quality = paper_quality["source_quality"]
+    st.subheader("Paper checker")
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-    metric_col1.metric("Verdict", source_quality["verdict"])
-    metric_col2.metric("Sources", source_quality["source_count"])
-    metric_col3.metric("Recent", source_quality["recent_count"])
+    metric_col1.metric("Verdict", paper_quality["verdict"])
+    metric_col2.metric("Words", paper_quality["word_count"])
+    metric_col3.metric("Sources", source_quality["source_count"])
     metric_col4.metric("DOI clues", source_quality["doi_count"])
 
-    if source_quality["verdict"] == "Good":
-        st.success("The source list looks usable. Still check key sources manually.")
-    elif source_quality["verdict"] == "Needs checking":
-        st.warning("The source list is usable, but it needs manual checking.")
+    if paper_quality["verdict"] == "Good":
+        st.success("This paper looks usable for a first-pass reading. Still check the original paper manually.")
+    elif paper_quality["verdict"] == "Needs checking":
+        st.warning("This paper can be used, but parts need manual checking.")
     else:
-        st.error("The source list is weak or missing.")
+        st.error("This paper review looks weak or incomplete.")
 
-    with st.expander("Source checker details"):
-        if source_quality["checks"]:
+    with st.expander("Paper checker details"):
+        if paper_quality["checks"]:
             st.markdown("**Looks okay**")
-            for check in source_quality["checks"]:
+            for check in paper_quality["checks"]:
                 st.markdown(f"- {check}")
-        if source_quality["warnings"]:
+        if paper_quality["warnings"]:
             st.markdown("**Check manually**")
+            for warning in paper_quality["warnings"]:
+                st.markdown(f"- {warning}")
+        if source_quality["warnings"]:
+            st.markdown("**Source notes**")
             for warning in source_quality["warnings"]:
                 st.markdown(f"- {warning}")
 
