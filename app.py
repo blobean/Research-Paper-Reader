@@ -519,7 +519,7 @@ def comparison_tab() -> None:
         st.session_state.comparison_selected_labels = labels[:2]
     st.session_state.comparison_selected_labels = [
         label for label in st.session_state.comparison_selected_labels if label in labels
-    ] or labels[:2]
+    ]
 
     select_col1, select_col2, select_col3 = st.columns([1, 1, 3])
     with select_col1:
