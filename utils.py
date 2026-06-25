@@ -470,6 +470,35 @@ def extract_sources(text: str) -> list[str]:
     return cleaned_sources
 
 
+def format_citation_source(source: str, style: str, index: int) -> str:
+    """Format a plain extracted reference in a best-effort citation style."""
+    cleaned = re.sub(r"\s+", " ", source).strip()
+    cleaned = re.sub(r"^(\[\d+\]|\d+[\.)])\s*", "", cleaned).strip()
+    cleaned = cleaned.rstrip(".")
+    style = style.lower()
+
+    if style == "original":
+        return source.strip()
+    if style == "vancouver":
+        return f"{index}. {cleaned}."
+    if style == "mla":
+        return f"{cleaned}."
+    if style == "harvard":
+        return f"{cleaned}."
+    if style == "apa":
+        return f"{cleaned}."
+    return source.strip()
+
+
+def format_citation_sources(sources: list[str], style: str) -> list[str]:
+    """Format extracted sources for display or download."""
+    return [
+        format_citation_source(source, style, index)
+        for index, source in enumerate(sources, start=1)
+        if str(source).strip()
+    ]
+
+
 def extract_keywords(text: str, limit: int = 12) -> list[str]:
     """Find likely important biomedical keywords using local word frequency."""
     words = re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", text.lower())

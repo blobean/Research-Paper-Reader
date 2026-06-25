@@ -19,6 +19,7 @@ from utils import (
     delete_paper,
     ensure_storage_files,
     extract_text_from_upload,
+    format_citation_sources,
     load_saved_papers,
     make_paper_id,
     recall_answer_across_papers,
@@ -475,8 +476,41 @@ def sources_tab() -> None:
     )
 
     if paper.get("sources"):
+        citation_style = st.selectbox(
+            "Citation format",
+            ["Original", "APA", "MLA", "Vancouver", "Harvard"],
+            help="Best-effort formatting from the extracted reference text.",
+        )
+        formatted_sources = format_citation_sources(paper["sources"], citation_style)
+
+        st.subheader("Formatted citations")
+        for source in formatted_sources:
+            st.markdown(f"- {source}")
+
+        download_col1, download_col2 = st.columns(2)
+        with download_col1:
+            st.download_button(
+                "Download formatted citations as TXT",
+                data="\n\n".join(formatted_sources).encode("utf-8"),
+                file_name=f"paper_sources_{citation_style.lower()}.txt",
+                mime="text/plain",
+            )
+        with download_col2:
+            st.download_button(
+                "Download formatted citations as CSV",
+                data=pd.DataFrame(
+                    {
+                        "Citation format": citation_style,
+                        "Formatted source": formatted_sources,
+                        "Original source": paper["sources"],
+                    }
+                ).to_csv(index=False).encode("utf-8"),
+                file_name=f"paper_sources_{citation_style.lower()}.csv",
+                mime="text/csv",
+            )
+
         st.download_button(
-            "Download sources as CSV",
+            "Download original sources as CSV",
             data=pd.DataFrame({"Source": paper["sources"]}).to_csv(index=False).encode("utf-8"),
             file_name="paper_sources.csv",
             mime="text/csv",

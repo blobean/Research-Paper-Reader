@@ -17,7 +17,7 @@ The app does not use a database, login, cloud deployment, or patient data. It ca
 - Automatically reopen saved paper reviews when the app starts again after a reboot.
 - Pull out clues for methods, results, and limitations to help guide reading.
 - Extract sources from the References or Bibliography section when present.
-- Edit and download the extracted sources list.
+- Edit extracted sources and download them in original, APA, MLA, Vancouver, or Harvard-style formats.
 - Ask questions about the paper in the Recall tab and receive local answers with supporting snippets.
 - Compare multiple uploaded papers side by side, including DeepSeek-assisted shared themes, differences, takeaways, cautions, unique themes, and possible opposing findings.
 - Save, load, view, and delete previous paper summaries.
@@ -81,7 +81,7 @@ Uploaded files are read locally in the app. If `DEEPSEEK_API_KEY` is set, the ap
 
 ## Sources
 
-The **Sources** tab lists references extracted from the uploaded or pasted paper. If the app cannot find a References or Bibliography section, you can still paste or edit the sources manually. The source list can be downloaded as a CSV file.
+The **Sources** tab lists references extracted from the uploaded or pasted paper. If the app cannot find a References or Bibliography section, you can still paste or edit the sources manually. The source list can be previewed and downloaded in original, APA, MLA, Vancouver, or Harvard-style formats. Formatting is best-effort because extracted references may not contain fully structured author, year, title, journal, and DOI fields.
 
 ## Recall
 
