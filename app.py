@@ -21,6 +21,7 @@ from utils import (
     extract_text_from_upload,
     format_citation_sources,
     load_saved_papers,
+    make_in_text_citation,
     make_paper_id,
     recall_answer_across_papers,
     recall_answer_question,
@@ -486,6 +487,21 @@ def sources_tab() -> None:
         st.subheader("Formatted citations")
         for source in formatted_sources:
             st.markdown(f"- {source}")
+
+        st.subheader("Specific in-text citation")
+        source_labels = [
+            f"{index}. {source[:120]}{'...' if len(source) > 120 else ''}"
+            for index, source in enumerate(paper["sources"], start=1)
+        ]
+        selected_source_label = st.selectbox("Source to cite", source_labels)
+        selected_source_index = source_labels.index(selected_source_label)
+        in_text_citation = make_in_text_citation(
+            paper["sources"][selected_source_index],
+            citation_style,
+            selected_source_index + 1,
+        )
+        st.code(in_text_citation)
+        st.caption("This is best-effort because extracted sources are plain text.")
 
         download_col1, download_col2 = st.columns(2)
         with download_col1:

@@ -499,6 +499,37 @@ def format_citation_sources(sources: list[str], style: str) -> list[str]:
     ]
 
 
+def _infer_citation_author(source: str) -> str:
+    """Infer the first author surname from a plain reference string."""
+    cleaned = re.sub(r"^(\[\d+\]|\d+[\.)])\s*", "", source).strip()
+    if not cleaned:
+        return "Author"
+    first_chunk = re.split(r"\.|,", cleaned, maxsplit=1)[0].strip()
+    words = re.findall(r"[A-Z][A-Za-z'-]+", first_chunk)
+    return words[0] if words else "Author"
+
+
+def _infer_citation_year(source: str) -> str:
+    """Infer a publication year from a plain reference string."""
+    match = re.search(r"\b(19|20)\d{2}\b", source)
+    return match.group(0) if match else "n.d."
+
+
+def make_in_text_citation(source: str, style: str, index: int) -> str:
+    """Create a best-effort in-text citation for one source."""
+    style = style.lower()
+    author = _infer_citation_author(source)
+    year = _infer_citation_year(source)
+
+    if style == "vancouver":
+        return f"[{index}]"
+    if style == "mla":
+        return f"({author})"
+    if style in {"apa", "harvard", "original"}:
+        return f"({author}, {year})"
+    return f"({author}, {year})"
+
+
 def extract_keywords(text: str, limit: int = 12) -> list[str]:
     """Find likely important biomedical keywords using local word frequency."""
     words = re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", text.lower())
