@@ -23,6 +23,7 @@ from utils import (
     make_paper_id,
     recall_answer_question,
     save_paper,
+    SAVED_PAPERS_FILE,
     serialise_value,
 )
 
@@ -71,9 +72,10 @@ def initialise_session() -> None:
     if "paper" not in st.session_state:
         st.session_state.paper = default_paper()
     if "papers" not in st.session_state:
-        st.session_state.papers = []
+        st.session_state.papers = [normalise_paper(paper) for paper in load_saved_papers()]
     if "active_paper_index" not in st.session_state:
         st.session_state.active_paper_index = 0
+    sync_active_paper()
 
 
 def configure_deepseek_from_secrets() -> None:
@@ -119,7 +121,9 @@ def delete_workspace_paper(index: int) -> None:
         return
 
     if 0 <= index < len(st.session_state.papers):
-        st.session_state.papers.pop(index)
+        removed_paper = st.session_state.papers.pop(index)
+        if removed_paper.get("paper_id"):
+            delete_paper(removed_paper["paper_id"])
 
     if st.session_state.papers:
         st.session_state.active_paper_index = min(index, len(st.session_state.papers) - 1)
@@ -196,6 +200,11 @@ def save_current_paper(paper_to_save: dict[str, Any] | None = None, show_success
         paper["paper_id"] = make_paper_id(paper["paper_title"])
 
     save_paper(paper)
+    if st.session_state.papers:
+        for index, saved_paper in enumerate(st.session_state.papers):
+            if saved_paper is paper or saved_paper.get("paper_id") == paper.get("paper_id"):
+                st.session_state.papers[index] = paper
+                break
     if paper_to_save is None:
         st.session_state.paper = paper
         if st.session_state.papers:
@@ -227,6 +236,7 @@ def run_extraction() -> None:
         first_line = assistant["cleaned_text"].splitlines()[0] if assistant["cleaned_text"] else ""
         update_paper("paper_title", first_line[:80] or "Untitled paper")
 
+    save_current_paper(show_success=False)
     st.success(f"Extracted summary points from about {assistant['word_count']} words.")
 
 
@@ -323,8 +333,9 @@ def paper_input_tab() -> None:
             st.session_state.paper = new_paper
             existing_file_ids.add(uploaded_file_id)
             added_count += 1
+            save_current_paper(new_paper, show_success=False)
         if added_count:
-            st.success(f"Loaded {added_count} new paper{'s' if added_count != 1 else ''}.")
+            st.success(f"Loaded and saved {added_count} new paper{'s' if added_count != 1 else ''}.")
             st.rerun()
 
     col1, col2, col3 = st.columns(3)
@@ -665,7 +676,7 @@ def main() -> None:
         saved_papers_tab()
 
     st.sidebar.title("Local files")
-    st.sidebar.write("Saved summaries: `saved_papers.json`")
+    st.sidebar.write(f"Saved summaries: `{SAVED_PAPERS_FILE}`")
     st.sidebar.title("AI provider")
     st.sidebar.write("DeepSeek: enabled" if deepseek_is_enabled() else "DeepSeek: set `DEEPSEEK_API_KEY` to enable")
     st.sidebar.caption("Without a DeepSeek key, summarisation stays fully local.")

@@ -24,7 +24,7 @@ except ImportError:
     Document = None
 
 
-DATA_DIR = Path(".")
+DATA_DIR = Path(__file__).resolve().parent
 SAVED_PAPERS_FILE = DATA_DIR / "saved_papers.json"
 VOCABULARY_FILE = DATA_DIR / "vocabulary.csv"
 EXPORTS_DIR = DATA_DIR / "exports"
@@ -252,7 +252,13 @@ def ensure_storage_files() -> None:
     EXPORTS_DIR.mkdir(exist_ok=True)
 
     if not SAVED_PAPERS_FILE.exists():
-        SAVED_PAPERS_FILE.write_text("[]", encoding="utf-8")
+        legacy_saved_file = Path.cwd() / "saved_papers.json"
+        if legacy_saved_file != SAVED_PAPERS_FILE and legacy_saved_file.exists():
+            SAVED_PAPERS_FILE.write_text(
+                legacy_saved_file.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+        else:
+            SAVED_PAPERS_FILE.write_text("[]", encoding="utf-8")
 
     if not VOCABULARY_FILE.exists():
         pd.DataFrame(STARTER_TERMS, columns=VOCABULARY_COLUMNS).to_csv(

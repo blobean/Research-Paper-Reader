@@ -14,6 +14,7 @@ The app does not use a database, login, cloud deployment, or patient data. It ca
 - View summaries in a separate Summary tab, with subtabs for each uploaded paper.
 - Delete uploaded paper tabs from the current workspace.
 - Save each uploaded paper from its own Paper Input subtab.
+- Automatically reopen saved paper reviews when the app starts again after a reboot.
 - Pull out clues for methods, results, and limitations to help guide reading.
 - Extract sources from the References or Bibliography section when present.
 - Edit and download the extracted sources list.
@@ -71,9 +72,10 @@ export DEEPSEEK_MAX_CHARS="60000"
 
 ## Where Data Is Saved
 
-The app creates these local files automatically:
+The app creates these local files automatically in this project folder:
 
-- `saved_papers.json` stores saved paper reviews.
+- `saved_papers.json` stores saved paper reviews and is loaded again when the app restarts.
+- `exports/` stores exported summary files.
 
 Uploaded files are read locally in the app. If `DEEPSEEK_API_KEY` is set, the app sends the paper text excerpt to DeepSeek to generate summary fields. If no key is set or the API call fails, the app uses local summarisation only.
 
