@@ -12,6 +12,7 @@ The app does not use a database, login, cloud deployment, or patient data. It ca
 - Generate a shorter reworded summary, highlighted key points, and keywords from the paper text.
 - Use DeepSeek for summary extraction and paper comparison when `DEEPSEEK_API_KEY` is set, with local extraction as a fallback.
 - View summaries in a separate Summary tab, with subtabs for each uploaded paper.
+- Check whether a paper's source list looks usable, weak, or in need of manual checking.
 - Delete uploaded paper tabs from the current workspace.
 - Save each uploaded paper from its own Paper Input subtab.
 - Automatically reopen saved paper reviews when the app starts again after a reboot.
@@ -82,6 +83,8 @@ Uploaded files are read locally in the app. If `DEEPSEEK_API_KEY` is set, the ap
 ## Sources
 
 The **Sources** tab lists references extracted from the uploaded or pasted paper. If the app cannot find a References or Bibliography section, you can still paste or edit the sources manually. The source list can be previewed and downloaded in original, APA, MLA, Vancouver, or Harvard-style formats. You can also select one source to generate an in-text citation such as `(Smith, 2024)` or `[1]`. Formatting is best-effort because extracted references may not contain fully structured author, year, title, journal, and DOI fields.
+
+The **Summary** tab includes a source checker at the top of each paper summary. It gives a simple local verdict based on reference count, recent publication years, DOI clues, journal/publication clues, and web-heavy source lists. This is a study aid, not a replacement for manually checking source credibility.
 
 ## Recall
 

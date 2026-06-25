@@ -530,6 +530,88 @@ def make_in_text_citation(source: str, style: str, index: int) -> str:
     return f"({author}, {year})"
 
 
+def check_source_quality(sources: list[str]) -> dict[str, Any]:
+    """Give a local, best-effort quality check for extracted source lists."""
+    cleaned_sources = [source.strip() for source in sources if str(source).strip()]
+    source_count = len(cleaned_sources)
+    if not cleaned_sources:
+        return {
+            "verdict": "Weak",
+            "score": 0,
+            "source_count": 0,
+            "recent_count": 0,
+            "doi_count": 0,
+            "url_count": 0,
+            "checks": ["No reference list was found."],
+            "warnings": ["Add or extract sources before trusting the paper summary."],
+        }
+
+    current_year = date.today().year
+    years = [
+        int(match.group(0))
+        for source in cleaned_sources
+        for match in re.finditer(r"\b(19|20)\d{2}\b", source)
+    ]
+    recent_count = sum(1 for year in years if current_year - year <= 10)
+    doi_count = sum(1 for source in cleaned_sources if re.search(r"\bdoi\b|10\.\d{4,9}/", source, re.I))
+    url_count = sum(1 for source in cleaned_sources if re.search(r"https?://|www\.", source, re.I))
+    journal_clue_count = sum(
+        1
+        for source in cleaned_sources
+        if re.search(r"\b(journal|volume|vol\.|issue|pp\.|proceedings|et al\.)\b", source, re.I)
+    )
+
+    score = 0
+    checks = []
+    warnings = []
+    if source_count >= 10:
+        score += 2
+        checks.append("Has a solid number of references.")
+    elif source_count >= 5:
+        score += 1
+        checks.append("Has some references.")
+    else:
+        warnings.append("Reference list is short.")
+
+    if years:
+        score += 1
+        checks.append("Publication years are visible.")
+        if recent_count >= max(1, source_count // 3):
+            score += 1
+            checks.append("Several sources look reasonably recent.")
+        else:
+            warnings.append("Few sources look recent.")
+    else:
+        warnings.append("Publication years are hard to identify.")
+
+    if doi_count:
+        score += 1
+        checks.append("Some sources include DOI clues.")
+    else:
+        warnings.append("No DOI clues found.")
+
+    if journal_clue_count:
+        score += 1
+        checks.append("Some sources look like journal or academic references.")
+    else:
+        warnings.append("Sources may be missing journal/publication details.")
+
+    if url_count > source_count / 2:
+        warnings.append("Many sources look web-based; check credibility manually.")
+
+    verdict = "Good" if score >= 5 else "Needs checking" if score >= 3 else "Weak"
+    return {
+        "verdict": verdict,
+        "score": score,
+        "source_count": source_count,
+        "recent_count": recent_count,
+        "doi_count": doi_count,
+        "url_count": url_count,
+        "checks": checks,
+        "warnings": warnings,
+    }
+
+
 def extract_keywords(text: str, limit: int = 12) -> list[str]:
     """Find likely important biomedical keywords using local word frequency."""
     words = re.findall(r"\b[A-Za-z][A-Za-z-]{3,}\b", text.lower())
