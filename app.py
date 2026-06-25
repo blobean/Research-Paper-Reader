@@ -514,7 +514,31 @@ def comparison_tab() -> None:
         paper.get("paper_title") or paper.get("uploaded_file_name") or f"Paper {index + 1}"
         for index, paper in enumerate(st.session_state.papers)
     ]
-    selected_labels = st.multiselect("Papers to compare", labels, default=labels[:2])
+    st.subheader("Choose papers")
+    if "comparison_selected_labels" not in st.session_state:
+        st.session_state.comparison_selected_labels = labels[:2]
+    st.session_state.comparison_selected_labels = [
+        label for label in st.session_state.comparison_selected_labels if label in labels
+    ] or labels[:2]
+
+    select_col1, select_col2, select_col3 = st.columns([1, 1, 3])
+    with select_col1:
+        if st.button("Select all papers"):
+            st.session_state.comparison_selected_labels = labels
+            st.rerun()
+    with select_col2:
+        if st.button("Clear selection"):
+            st.session_state.comparison_selected_labels = []
+            st.rerun()
+
+    selected_labels = st.multiselect(
+        "Papers to compare",
+        labels,
+        default=st.session_state.comparison_selected_labels,
+        help="Choose two or more uploaded or saved papers for this comparison.",
+    )
+    st.session_state.comparison_selected_labels = selected_labels
+    st.caption(f"{len(selected_labels)} of {len(labels)} papers selected.")
     selected_papers = [
         st.session_state.papers[labels.index(label)]
         for label in selected_labels
