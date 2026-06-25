@@ -388,7 +388,7 @@ def paper_input_tab() -> None:
     with col1:
         if st.button("Summarise paper", type="primary"):
             run_extraction()
-            st.session_state.active_page = "Summary"
+            st.session_state.requested_page = "Summary"
             st.rerun()
     with col2:
         if st.button("Summarise all"):
@@ -397,7 +397,7 @@ def paper_input_tab() -> None:
                 st.session_state.paper = paper_item
                 run_extraction()
             sync_active_paper()
-            st.session_state.active_page = "Summary"
+            st.session_state.requested_page = "Summary"
             st.rerun()
     with col3:
         if st.button("Start new paper"):
@@ -777,7 +777,7 @@ def saved_papers_tab() -> None:
                 st.session_state.papers[existing_index] = loaded_paper
                 st.session_state.active_paper_index = existing_index
             st.session_state.paper = loaded_paper
-            st.session_state.active_page = "Summary"
+            st.session_state.requested_page = "Summary"
             st.rerun()
     with col2:
         if st.button("Delete saved paper"):
@@ -799,14 +799,18 @@ def main() -> None:
     page_names = ["Paper Input", "Summary", "Sources", "Recall", "Comparison", "Saved Papers"]
     if "active_page" not in st.session_state or st.session_state.active_page not in page_names:
         st.session_state.active_page = page_names[0]
+    if st.session_state.get("requested_page") in page_names:
+        st.session_state.active_page = st.session_state.requested_page
+        del st.session_state.requested_page
 
     st.sidebar.title("Navigation")
     active_page = st.sidebar.radio(
         "Go to",
         page_names,
         index=page_names.index(st.session_state.active_page),
-        key="active_page",
+        key="navigation_page",
     )
+    st.session_state.active_page = active_page
 
     if active_page == "Paper Input":
         paper_input_tab()
