@@ -801,7 +801,10 @@ def main() -> None:
         st.session_state.active_page = page_names[0]
     if st.session_state.get("requested_page") in page_names:
         st.session_state.active_page = st.session_state.requested_page
+        st.session_state.navigation_page = st.session_state.requested_page
         del st.session_state.requested_page
+    elif st.session_state.get("navigation_page") in page_names:
+        st.session_state.active_page = st.session_state.navigation_page
 
     st.sidebar.title("Navigation")
     active_page = st.sidebar.radio(
