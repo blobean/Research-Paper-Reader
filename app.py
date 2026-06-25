@@ -437,7 +437,7 @@ def sources_tab() -> None:
 
 def recall_tab() -> None:
     st.header("Recall")
-    st.write("Ask a question about the uploaded paper. The app answers using only the paper text and extracted points.")
+    st.write("Ask a question about the uploaded paper. The app gives a direct answer from the paper text and extracted points.")
 
     paper = st.session_state.paper
     question = st.text_input(
@@ -458,25 +458,20 @@ def recall_tab() -> None:
         st.warning(result["answer"])
         return
 
-    st.subheader("Answer")
-    st.caption(result["answer"])
+    st.subheader("Direct answer")
     if result.get("main_point"):
-        st.markdown("**Short answer**")
-        st.info(result["main_point"])
+        st.success(result["main_point"])
+    st.caption(f"{result['answer']} Confidence: {result['confidence']}.")
 
-    with st.expander("Detailed answer", expanded=True):
+    with st.expander("Why this answer", expanded=False):
         key_details = result.get("key_details", [])
         if key_details:
-            st.markdown("**Key details**")
             for point in key_details:
                 st.markdown(f"- {point}")
         else:
-            st.caption("No extra details were found beyond the short answer.")
+            st.caption("No extra details found beyond the direct answer.")
 
-    st.caption(f"Confidence: {result['confidence']}")
-
-    with st.expander("Supporting evidence"):
-        render_wrapped_table(result["matches"])
+    with st.expander("Evidence from the paper"):
         for index, match in enumerate(result["matches"], start=1):
             st.markdown(f"**{index}. {match['section']}**")
             st.caption(f"Matched terms: {match['matched_terms']}")
